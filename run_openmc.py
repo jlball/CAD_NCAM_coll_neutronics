@@ -1,6 +1,14 @@
 import openmc
 import matplotlib.pyplot as plt
 import numpy as np
+import argparse
+
+parser = argparse.ArgumentParser(description='Run OpenMC simulation with DAGMC geometry.')
+
+parser.add_argument("--ww", action="store_true", help="Use MAGIC method to geneerate weight windows for variance reduction")
+
+args = parser.parse_args()
+
 
 def get_region_from_bbox(bbox, boundary_type='vacuum'):
     xmin, ymin, zmin = bbox.lower_left
@@ -71,8 +79,6 @@ detector_region = -detector_front & +detector_back & -detector_cyl
 detector_cell = openmc.Cell(region=detector_region)
 detector_cell.fill = deuterated_xylene
 
-
-
 # Create OpenMC geometry from DAGMC file
 dagmc_univ = openmc.DAGMCUniverse("dagmc.h5m", auto_geom_ids=True)
 
@@ -110,9 +116,30 @@ source.strength = 2e9 # neutrons per second
 
 settings = openmc.Settings()
 settings.batches = 100
-settings.particles = int(5e5)
+settings.particles = int(1e6)
 settings.run_mode = 'fixed source'
 settings.source = source
+
+if args.ww:
+    # Define weight window spatial mesh
+    voxel_size = 10 # cm
+
+    ww_mesh = openmc.RegularMesh()
+    ww_mesh.dimension = (int((dagmc_univ.bounding_box.upper_right[0] - dagmc_univ.bounding_box.lower_left[0]) / voxel_size),
+                        int((dagmc_univ.bounding_box.upper_right[1] - dagmc_univ.bounding_box.lower_left[1]) / voxel_size),
+                        int((dagmc_univ.bounding_box.upper_right[2] - dagmc_univ.bounding_box.lower_left[2]) / voxel_size))
+    ww_mesh.lower_left = dagmc_univ.bounding_box.lower_left
+    ww_mesh.upper_right =  dagmc_univ.bounding_box.upper_right
+
+    # Create weight window object and adjust parameters
+    wwg = openmc.WeightWindowGenerator(
+        method='magic',
+        mesh=ww_mesh,
+        max_realizations=settings.batches
+    )
+
+    # Add generator to Settings instance
+    settings.weight_window_generators = wwg
 
 model.settings = settings
 
