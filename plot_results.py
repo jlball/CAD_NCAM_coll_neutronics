@@ -2,9 +2,14 @@ import openmc
 import matplotlib.pyplot as plt
 from matplotlib import colors
 import numpy as np
+import argparse
+
+parser = argparse.ArgumentParser(description='Plot OpenMC simulation results.')
+parser.add_argument("directory", help="Directory containing OpenMC statepoint file")
+args = parser.parse_args()
 
 # Load statepoint file
-sp = openmc.StatePoint("statepoint.100.h5")
+sp = openmc.StatePoint(f"{args.directory}/statepoint.100.h5")
 
 # Plot 2D mesh flux tally
 mesh_tally = sp.get_tally(name='mesh flux tally')
@@ -33,7 +38,7 @@ ax.set_xlabel('X (cm)')
 ax.set_ylabel('Y (cm)')
 ax.set_title('2D Neutron Flux Distribution')
 fig.tight_layout()
-fig.savefig('XY_neutron_flux.png', dpi=300)
+fig.savefig(f'{args.directory}/XY_neutron_flux.png', dpi=300)
 
 # Mesh dose tally
 dose_tally = sp.get_tally(name='mesh neutron dose tally')
@@ -58,7 +63,7 @@ dose_ax.set_ylabel('Y (cm)')
 dose_ax.set_title('2D Neutron Dose Rate Distribution')
 dose_fig.tight_layout()
 
-dose_fig.savefig('XY_neutron_dose_rate.png', dpi=300)
+dose_fig.savefig(f'{args.directory}/XY_neutron_dose_rate.png', dpi=300)
 
 # Plot detector tally
 det_volume = (np.pi * (1.5)**2) * 1  # cm^3
@@ -77,7 +82,7 @@ det_spec_ax.set_xlabel('Energy (eV)')
 det_spec_ax.set_ylabel('Neutron Flux (n/cm²-s-eV)')
 det_spec_ax.set_title('Neutron Energy Spectrum at Detector')
 det_spec_fig.tight_layout()
-det_spec_fig.savefig('detector_neutron_spectrum.png', dpi=300)
+det_spec_fig.savefig(f'{args.directory}/detector_neutron_spectrum.png', dpi=300)
 
 plt.show()
 

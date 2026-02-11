@@ -6,6 +6,8 @@ import argparse
 parser = argparse.ArgumentParser(description='Run OpenMC simulation with DAGMC geometry.')
 
 parser.add_argument("--ww", action="store_true", help="Use MAGIC method to geneerate weight windows for variance reduction")
+parser.add_argument("--dagmc_file", "-f", default="dagmc.h5m", help="Path to the DAGMC file (default: dagmc.h5m)")
+parser.add_argument("directory", help="Output file directory for OpenMC results")
 
 args = parser.parse_args()
 
@@ -65,7 +67,6 @@ air.set_density('g/cm3', 0.001225)
 
 materials = openmc.Materials([alumminum, concrete, carbon_fiber, kretekast, deuterated_xylene, air])
 
-
 model = openmc.model.Model()
 
 # Detector region
@@ -80,7 +81,7 @@ detector_cell = openmc.Cell(region=detector_region)
 detector_cell.fill = deuterated_xylene
 
 # Create OpenMC geometry from DAGMC file
-dagmc_univ = openmc.DAGMCUniverse("dagmc.h5m", auto_geom_ids=True)
+dagmc_univ = openmc.DAGMCUniverse(args.dagmc_file, auto_geom_ids=True)
 
 bounding_region = get_region_from_bbox(dagmc_univ.bounding_box, boundary_type='vacuum') & ~detector_region
 
@@ -105,7 +106,7 @@ plt.close()
 
 # Settings
 source = openmc.IndependentSource()
-source.space = openmc.stats.Point((0, 120, 95))
+source.space = openmc.stats.Point((1, 120, 95))
 source.angle = openmc.stats.PolarAzimuthal(
     mu=openmc.stats.Uniform(0, 1.0),  # Isotropic in the forward hemisphere
     phi=openmc.stats.Uniform(0, 2 * np.pi),
@@ -122,7 +123,7 @@ settings.source = source
 
 if args.ww:
     # Define weight window spatial mesh
-    voxel_size = 10 # cm
+    voxel_size = 50 # cm
 
     ww_mesh = openmc.RegularMesh()
     ww_mesh.dimension = (int((dagmc_univ.bounding_box.upper_right[0] - dagmc_univ.bounding_box.lower_left[0]) / voxel_size),
@@ -155,7 +156,7 @@ mesh.upper_right = dagmc_univ.bounding_box.upper_right
 x_width =  mesh.upper_right[0] - mesh.lower_left[0] 
 y_width =  mesh.upper_right[1] - mesh.lower_left[1]
 
-mesh_size = 4 # cm
+mesh_size = 2 # cm
 
 mesh.dimension = (int(x_width/mesh_size), int(y_width/mesh_size), 1)  # Adjusted for better resolution
 
@@ -192,5 +193,4 @@ tallies.append(detector_tally)
 model.tallies = tallies
 
 # Run OpenMC simulation
-model.export_to_xml()
-openmc.run()
+model.run(cwd=args.directory)

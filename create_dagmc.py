@@ -14,10 +14,11 @@ import argparse
 model = CadToDagmc()
 model.add_stp_file(
     filename="NCAM_coll_vault_v1.step",
-    material_tags=["concrete", "air", "aluminum", "carbon_fiber", "air", "kretekast"]
+    material_tags=["concrete", "aluminum", "aluminum", "carbon_fiber", "aluminum", "kretekast"]
 )
 
 # material_tags=["concrete", "aluminum", "aluminum", "carbon_fiber", "aluminum", "kretekast"]
+# material_tags=["concrete", "air", "aluminum", "carbon_fiber", "air", "kretekast"]
 
 model.export_dagmc_h5m_file(filename="dagmc.h5m", scale_factor=0.1) # Convert from mm to cm
 
