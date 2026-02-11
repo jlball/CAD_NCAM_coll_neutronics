@@ -40,7 +40,7 @@ ax.set_title('2D Neutron Flux Distribution')
 fig.tight_layout()
 fig.savefig(f'{args.directory}/XY_neutron_flux.png', dpi=300)
 
-# Mesh dose tally
+# Mesh neutron dose tally
 dose_tally = sp.get_tally(name='mesh neutron dose tally')
 dose = dose_tally.get_slice(scores=['flux']).mean.flatten()
 
@@ -50,11 +50,11 @@ dose_reshaped = dose.reshape(mesh.dimension[1], mesh.dimension[0])  # Note the o
 dose_reshaped = dose_reshaped/mesh.volumes.reshape(mesh.dimension[1], mesh.dimension[0]) * 3600 / 10000000 # from pSv/s to mrem/hr
 #log_dose = np.log10(dose_reshaped + 1e-20)  # Avoid log(0) issues
 
-dose_log_norm = colors.LogNorm(vmin=0.1, vmax=1000)
+dose_log_norm = colors.LogNorm(vmin=0.1, vmax=10000)
 
 dose_fig, dose_ax = plt.subplots(figsize=(8, 10))
 dose_c = dose_ax.pcolormesh(x, y, dose_reshaped, shading='auto', cmap='magma', norm=dose_log_norm)
-contours = dose_ax.contour(x[:-1], y[:-1], dose_reshaped, levels=[3, 10, 100], colors='white')
+contours = dose_ax.contour(x[:-1], y[:-1], dose_reshaped, levels=[1, 10, 100, 1000, 10000], colors='white')
 dose_ax.clabel(contours, inline=True, fontsize=18, inline_spacing=10)            
 dose_ax.set_aspect('equal')
 dose_fig.colorbar(dose_c, ax=dose_ax, label='Neutron Dose Rate (mrem/hr)')
@@ -64,6 +64,28 @@ dose_ax.set_title('2D Neutron Dose Rate Distribution')
 dose_fig.tight_layout()
 
 dose_fig.savefig(f'{args.directory}/XY_neutron_dose_rate.png', dpi=300)
+
+# Mesh photon dose tally
+photon_dose_tally = sp.get_tally(name='mesh photon dose tally')
+photon_dose = photon_dose_tally.get_slice(scores=['flux']).mean.flatten() 
+
+photon_dose_reshaped = photon_dose.reshape(mesh.dimension[1], mesh.dimension[0])  # Note the order for plotting
+
+photon_dose_reshaped = photon_dose_reshaped/mesh.volumes.reshape(mesh.dimension[1], mesh.dimension[0]) * 3600 / 10000000 # from pSv/s to mrem/hr
+
+photon_dose_log_norm = colors.LogNorm(vmin=0.01, vmax=1000)
+
+photon_dose_fig, photon_dose_ax = plt.subplots(figsize=(8, 10))
+photon_dose_c = photon_dose_ax.pcolormesh(x, y, photon_dose_reshaped, shading='auto', cmap='magma', norm=photon_dose_log_norm)
+photon_contours = photon_dose_ax.contour(x[:-1], y[:-1], photon_dose_reshaped, levels=[1, 10, 100, 1000, 10000], colors='white')
+photon_dose_ax.clabel(photon_contours, inline=True, fontsize=18, inline_spacing=10)            
+photon_dose_ax.set_aspect('equal')
+photon_dose_fig.colorbar(photon_dose_c, ax=photon_dose_ax, label='Photon Dose Rate (mrem/hr)')
+photon_dose_ax.set_xlabel('X (cm)')
+photon_dose_ax.set_ylabel('Y (cm)')
+photon_dose_ax.set_title('2D Photon Dose Rate Distribution')
+photon_dose_fig.tight_layout()
+photon_dose_fig.savefig(f'{args.directory}/XY_photon_dose_rate.png', dpi=300)
 
 # Plot detector tally
 det_volume = (np.pi * (1.5)**2) * 1  # cm^3

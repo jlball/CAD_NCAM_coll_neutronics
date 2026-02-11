@@ -2,12 +2,15 @@ import openmc
 import matplotlib.pyplot as plt
 import numpy as np
 import argparse
+import copy
+import os
 
 parser = argparse.ArgumentParser(description='Run OpenMC simulation with DAGMC geometry.')
 
 parser.add_argument("--ww", action="store_true", help="Use MAGIC method to geneerate weight windows for variance reduction")
-parser.add_argument("--dagmc_file", "-f", default="dagmc.h5m", help="Path to the DAGMC file (default: dagmc.h5m)")
+parser.add_argument("--dagmc_file", "-f", default="BHDPE_dagmc.h5", help="Path to the DAGMC file (default: BHDPE_dagmc.h5)")
 parser.add_argument("directory", help="Output file directory for OpenMC results")
+parser.add_argument("--photons", action="store_true", help="Include photons in the simulation")
 
 args = parser.parse_args()
 
@@ -63,9 +66,17 @@ air = openmc.Material(name='air')
 air.add_element('N', 0.78)
 air.add_element('O', 0.21)
 air.add_element('Ar', 0.01)
-air.set_density('g/cm3', 0.001225)
 
-materials = openmc.Materials([alumminum, concrete, carbon_fiber, kretekast, deuterated_xylene, air])
+BHDPE = openmc.Material(material_id=7, name='B_HDPE')  # Keep original name for DAGMC mapping
+BHDPE.add_nuclide('C12', 0.321945534944)
+BHDPE.add_nuclide('C13', 0.003606465056)
+BHDPE.add_nuclide('H1', 0.62766123281334)
+BHDPE.add_nuclide('H2', 9.776718665999998e-05)
+BHDPE.add_nuclide('B10', 0.009253958)
+BHDPE.add_nuclide('B11', 0.037436042)
+BHDPE.set_density('g/cm3', 1)
+
+materials = openmc.Materials([alumminum, concrete, carbon_fiber, kretekast, deuterated_xylene, BHDPE])
 
 model = openmc.model.Model()
 
@@ -106,22 +117,36 @@ plt.close()
 
 # Settings
 source = openmc.IndependentSource()
-source.space = openmc.stats.Point((1, 120, 95))
-source.angle = openmc.stats.PolarAzimuthal(
-    mu=openmc.stats.Uniform(0, 1.0),  # Isotropic in the forward hemisphere
-    phi=openmc.stats.Uniform(0, 2 * np.pi),
-    reference_uvw=(0, -1, 0)
-)
+source.space = openmc.stats.Point((0, 120, 95))
+
+# source.angle = openmc.stats.PolarAzimuthal(
+#     mu=openmc.stats.Uniform(0, 1.0),  # Isotropic in the forward hemisphere
+#     phi=openmc.stats.Uniform(0, 2 * np.pi),
+#     reference_uvw=(0, -1, 0)
+# )
+
+source.angle = openmc.stats.Isotropic()  # Isotropic in all directions
+
 source.energy = openmc.stats.Discrete([14.06e6], [1.0])
 source.strength = 2e9 # neutrons per second
 
 settings = openmc.Settings()
 settings.batches = 100
-settings.particles = int(1e6)
+settings.particles = int(1e5)
 settings.run_mode = 'fixed source'
 settings.source = source
+settings.photon_transport = args.photons
+
+model.settings = settings
 
 if args.ww:
+
+    try:
+        os.chdir(f"{args.directory}/ww_generation")
+    except:
+        os.makedirs(f"{args.directory}/ww_generation")
+        os.chdir(f"{args.directory}/ww_generation")
+
     # Define weight window spatial mesh
     voxel_size = 50 # cm
 
@@ -132,17 +157,45 @@ if args.ww:
     ww_mesh.lower_left = dagmc_univ.bounding_box.lower_left
     ww_mesh.upper_right =  dagmc_univ.bounding_box.upper_right
 
+    # Generate model for running random ray solve
+    # Create a deep copy but fix material name mappings
+    ww_model = copy.deepcopy(model)
+
+    # Random ray solver requires a fixed source distribution, so we can use the same source but make it isotropic
+    # ww_model.settings.source.angle = openmc.stats.Isotropic()
+
+    print("##### CONVERT TO MGXS #####")
+    ww_model.convert_to_multigroup(nparticles=10000,
+                                   groups="CCFE-709")
+    print("##### CONVERT TO RANDOM RAY #####")
+    ww_model.convert_to_random_ray()
+    ww_model.settings.random_ray["source_region_meshes"] = [(ww_mesh, [ww_model.geometry.root_universe])]
+    #ww_model.settings.source = None  # No need for a source in the random ray solve, as it will be generated from the mesh
+
+    # (Optional) Improve fidelity of the random ray solver by enabling linear sources
+    ww_model.settings.random_ray['source_shape'] = 'linear'
+
+    # (Optional) Increase the number of rays/batch, to reduce uncertainty
+    ww_model.settings.particles = 50000
+
     # Create weight window object and adjust parameters
     wwg = openmc.WeightWindowGenerator(
-        method='magic',
+        method='fw_cadis',
         mesh=ww_mesh,
-        max_realizations=settings.batches
+        #max_realizations=settings.batches
     )
 
     # Add generator to Settings instance
-    settings.weight_window_generators = wwg
+    ww_model.settings.weight_window_generators = wwg
+    print("##### RUNNING FW-CADIS WEIGHT WINDOW GENERATION #####")
+    ww_model.run()
 
-model.settings = settings
+    os.chdir("../..")
+
+    model.settings.weight_windows_file = f"{args.directory}/ww_generation/weight_windows.h5"
+    model.settings.weight_windows_on = True
+    model.settings.weight_window_checkpoints = {'collision': True, 'surface': True}
+    model.settings.survival_biasing = False
 
 # Tallies
 tallies = openmc.Tallies()
@@ -156,7 +209,7 @@ mesh.upper_right = dagmc_univ.bounding_box.upper_right
 x_width =  mesh.upper_right[0] - mesh.lower_left[0] 
 y_width =  mesh.upper_right[1] - mesh.lower_left[1]
 
-mesh_size = 2 # cm
+mesh_size = 4 # cm
 
 mesh.dimension = (int(x_width/mesh_size), int(y_width/mesh_size), 1)  # Adjusted for better resolution
 
@@ -166,29 +219,45 @@ energy_bins_n, dose_coeffs_n = openmc.data.dose_coefficients(
         particle="neutron", geometry="AP"
     )
 
+energy_bins_p, dose_coeffs_p = openmc.data.dose_coefficients(
+        particle="photon", geometry="AP"
+    )
+
 neutron_dose_filter = openmc.EnergyFunctionFilter(energy_bins_n, dose_coeffs_n)
 neutron_dose_filter.interpolation = "cubic"  # cubic interpolation is recommended by ICRP
+
+photon_dose_filter = openmc.EnergyFunctionFilter(energy_bins_p, dose_coeffs_p)
+photon_dose_filter.interpolation = "cubic"
 
 # Energy filter
 energy_filter = openmc.EnergyFilter.from_group_structure("CCFE-709") # 14.06 MeV neutrons
 
+# Particle filters
+neutron_filter = openmc.ParticleFilter('neutron')
+photon_filter = openmc.ParticleFilter('photon')
+
 # Mesh Flux
 mesh_flux_tally = openmc.Tally(name='mesh flux tally')
-mesh_flux_tally.filters = [mesh_filter]
+mesh_flux_tally.filters = [mesh_filter, neutron_filter]
 mesh_flux_tally.scores = ['flux']  # Add dose-rate score
 
 # Mesh Neutron Dose
 mesh_neutron_dose = openmc.Tally(name='mesh neutron dose tally')
-mesh_neutron_dose.filters = [mesh_filter, neutron_dose_filter]
+mesh_neutron_dose.filters = [mesh_filter, neutron_dose_filter, neutron_filter]
 mesh_neutron_dose.scores = ['flux']  # Dose will be calculated via the
+
+mesh_photon_dose = openmc.Tally(name='mesh photon dose tally')
+mesh_photon_dose.filters = [mesh_filter, photon_dose_filter, photon_filter]
+mesh_photon_dose.scores = ['flux']  # Dose will be calculated via the dose coefficients
 
 # Detector Tally
 detector_tally = openmc.Tally(name='detector tally')
-detector_tally.filters = [openmc.CellFilter(detector_cell), energy_filter]
+detector_tally.filters = [openmc.CellFilter(detector_cell), energy_filter, neutron_filter]
 detector_tally.scores = ['flux']
 
 tallies.append(mesh_flux_tally)
 tallies.append(mesh_neutron_dose)
+tallies.append(mesh_photon_dose)
 tallies.append(detector_tally)
 model.tallies = tallies
 
