@@ -148,7 +148,7 @@ if args.ww:
         os.chdir(f"{args.directory}/ww_generation")
 
     # Define weight window spatial mesh
-    voxel_size = 50 # cm
+    voxel_size = 25 # cm
 
     ww_mesh = openmc.RegularMesh()
     ww_mesh.dimension = (int((dagmc_univ.bounding_box.upper_right[0] - dagmc_univ.bounding_box.lower_left[0]) / voxel_size),
@@ -165,7 +165,7 @@ if args.ww:
     # ww_model.settings.source.angle = openmc.stats.Isotropic()
 
     print("##### CONVERT TO MGXS #####")
-    ww_model.convert_to_multigroup(nparticles=10000,
+    ww_model.convert_to_multigroup(nparticles=100000,
                                    groups="CCFE-709")
     print("##### CONVERT TO RANDOM RAY #####")
     ww_model.convert_to_random_ray()
@@ -176,7 +176,7 @@ if args.ww:
     ww_model.settings.random_ray['source_shape'] = 'linear'
 
     # (Optional) Increase the number of rays/batch, to reduce uncertainty
-    ww_model.settings.particles = 50000
+    ww_model.settings.particles = 100000
 
     # Create weight window object and adjust parameters
     wwg = openmc.WeightWindowGenerator(
