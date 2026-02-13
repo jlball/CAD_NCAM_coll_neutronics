@@ -8,7 +8,7 @@ import os
 parser = argparse.ArgumentParser(description='Run OpenMC simulation with DAGMC geometry.')
 
 parser.add_argument("--ww", action="store_true", help="Use MAGIC method to geneerate weight windows for variance reduction")
-parser.add_argument("--ww_method", default="magic", type=str, help="Weight window generation method (default: magic)")
+parser.add_argument("--ww_method", default="magic", type=str, choices=["magic", "fw_cadis", "pre-generated"], help="Weight window generation method (default: magic)")
 parser.add_argument("--ww_path", type=str, help="Path to weight window file if using pre-generated weight windows")
 parser.add_argument("--dagmc_file", "-f", default="BHDPE_dagmc.h5", help="Path to the DAGMC file (default: BHDPE_dagmc.h5)")
 parser.add_argument("directory", help="Output file directory for OpenMC results")
@@ -94,6 +94,7 @@ def build_model(dagmc_file, source_position=(0, 120, 95),
                 simulate_photons=False, 
                 ww=False, 
                 ww_method="magic",
+                ww_path=None,
                 batches=100,
                 particles=100000):
 
@@ -169,7 +170,6 @@ def build_model(dagmc_file, source_position=(0, 120, 95),
     model.settings = settings
 
     if ww:
-
         if ww_method.lower() == "fw_cadis":
             try:
                 os.chdir(f"{args.directory}/ww_generation")
@@ -227,7 +227,7 @@ def build_model(dagmc_file, source_position=(0, 120, 95),
             model.settings.weight_window_checkpoints = {'collision': True, 'surface': True}
             model.settings.survival_biasing = False
         
-        elif args.ww_method.lower() == "magic":
+        elif ww_method.lower() == "magic":
             # Define weight window spatial mesh
             voxel_size = 50 # cm
 
@@ -248,10 +248,10 @@ def build_model(dagmc_file, source_position=(0, 120, 95),
             # Add generator to Settings instance
             settings.weight_window_generators = wwg
 
-        elif args.ww_method.lower() == "pre-generated":
-            if not args.ww_path:
+        elif ww_method.lower() == "pre-generated":
+            if ww_path is None:
                 raise ValueError("Weight window file path must be provided when using pre-generated weight windows.")
-            settings.weight_windows_file = args.ww_path
+            settings.weight_windows_file = ww_path
             settings.weight_windows_on = True
             settings.weight_window_checkpoints = {'collision': True, 'surface': True}
             settings.survival_biasing = False

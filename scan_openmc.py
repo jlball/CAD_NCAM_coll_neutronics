@@ -10,7 +10,7 @@ parser.add_argument("directory", type=str, default="openmc_simulations", help="D
 parser.add_argument("--dagmc_file", "-f", type=str, required=True, help="Path to the DAGMC file.")
 parser.add_argument("--photons", action="store_true", help="Enable photon transport in the simulation.")
 parser.add_argument("--ww", action="store_true", help="Enable weight window generation.")
-parser.add_argument("--ww_method", type=str, default="magic", choices=["magic", "fw_cadis"], help="Method for weight window generation (default: magic).")
+parser.add_argument("--ww_method", type=str, default="magic", choices=["magic", "fw_cadis", "pre-generated"], help="Method for weight window generation (default: magic).")
 parser.add_argument("--ww_path", type=str, help="Path to pre-generated weight window file (required if ww_method is 'pre-generated').")
 parser.add_argument("--batches", type=int, default=100, help="Number of batches for the OpenMC simulation (default: 100).")
 parser.add_argument("--particles", type=int, default=100000 , help="Number of particles per batch for the OpenMC simulation (default: 100000).")
@@ -45,13 +45,14 @@ if run_simulation:
                                     particles=args.particles)
 
             else:
+                print("Reusing weight windows from previous simulation...")
                 model = build_model(args.dagmc_file, 
                                     source_position=(x_pos, 120, 95), 
                                     source_strength=2e9, 
                                     simulate_photons=args.photons, 
                                     ww=args.ww, 
                                     ww_method="pre-generated",
-                                    ww_path=f"{args.directory}/{sim_directories[i]}/weight_windows.h5",
+                                    ww_path=f"{sim_directories[0]}/weight_windows.h5",
                                     batches=args.batches,
                                     particles=args.particles)
 
