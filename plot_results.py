@@ -9,7 +9,6 @@ parser.add_argument("directory", help="Directory containing OpenMC statepoint fi
 args = parser.parse_args()
 
 def analyse_statepoint(directory, sp_name = "statepoint.100.h5", plot=True):
-
     sp = openmc.StatePoint(f"{directory}/{sp_name}")
 
     # Plot 2D mesh flux tally
@@ -126,3 +125,5 @@ def analyse_statepoint(directory, sp_name = "statepoint.100.h5", plot=True):
     sp.close()
 
 
+if __name__ == "__main__":
+    analyse_statepoint(args.directory)

@@ -9,6 +9,7 @@ parser = argparse.ArgumentParser(description='Run OpenMC simulation with DAGMC g
 
 parser.add_argument("--ww", action="store_true", help="Use MAGIC method to geneerate weight windows for variance reduction")
 parser.add_argument("--ww_method", default="magic", type=str, help="Weight window generation method (default: magic)")
+parser.add_argument("--ww_path", type=str, help="Path to weight window file if using pre-generated weight windows")
 parser.add_argument("--dagmc_file", "-f", default="BHDPE_dagmc.h5", help="Path to the DAGMC file (default: BHDPE_dagmc.h5)")
 parser.add_argument("directory", help="Output file directory for OpenMC results")
 parser.add_argument("--photons", action="store_true", help="Include photons in the simulation")
@@ -177,7 +178,7 @@ def build_model(dagmc_file, source_position=(0, 120, 95),
                 os.chdir(f"{args.directory}/ww_generation")
 
             # Define weight window spatial mesh
-            voxel_size = 25 # cm
+            voxel_size = 50 # cm
 
             ww_mesh = openmc.RegularMesh()
             ww_mesh.dimension = (int((dagmc_univ.bounding_box.upper_right[0] - dagmc_univ.bounding_box.lower_left[0]) / voxel_size),
@@ -246,6 +247,14 @@ def build_model(dagmc_file, source_position=(0, 120, 95),
 
             # Add generator to Settings instance
             settings.weight_window_generators = wwg
+
+        elif args.ww_method.lower() == "pre-generated":
+            if not args.ww_path:
+                raise ValueError("Weight window file path must be provided when using pre-generated weight windows.")
+            settings.weight_windows_file = args.ww_path
+            settings.weight_windows_on = True
+            settings.weight_window_checkpoints = {'collision': True, 'surface': True}
+            settings.survival_biasing = False
 
     # Tallies
     tallies = openmc.Tallies()
