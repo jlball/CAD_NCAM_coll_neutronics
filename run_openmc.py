@@ -68,16 +68,24 @@ air.add_element('N', 0.78)
 air.add_element('O', 0.21)
 air.add_element('Ar', 0.01)
 
-BHDPE = openmc.Material(material_id=7, name='B_HDPE')  # Keep original name for DAGMC mapping
-BHDPE.add_nuclide('C12', 0.321945534944)
-BHDPE.add_nuclide('C13', 0.003606465056)
-BHDPE.add_nuclide('H1', 0.62766123281334)
-BHDPE.add_nuclide('H2', 9.776718665999998e-05)
-BHDPE.add_nuclide('B10', 0.009253958)
-BHDPE.add_nuclide('B11', 0.037436042)
-BHDPE.set_density('g/cm3', 1)
+B_HDPE = openmc.Material(material_id=7, name='B_HDPE')  # Keep original name for DAGMC mapping
+B_HDPE.add_nuclide('C12', 0.321945534944)
+B_HDPE.add_nuclide('C13', 0.003606465056)
+B_HDPE.add_nuclide('H1', 0.62766123281334)
+B_HDPE.add_nuclide('H2', 9.776718665999998e-05)
+B_HDPE.add_nuclide('B10', 0.009253958)
+B_HDPE.add_nuclide('B11', 0.037436042)
+B_HDPE.set_density('g/cm3', 1)
 
-materials = openmc.Materials([alumminum, concrete, carbon_fiber, kretekast, deuterated_xylene, BHDPE])
+materials_dict = {
+    'aluminum': alumminum,
+    'concrete': concrete,
+    'carbon_fiber': carbon_fiber,
+    'kretekast': kretekast,
+    'deuterated_xylene': deuterated_xylene,
+    "air": air,
+    'B_HDPE': B_HDPE
+}
 
 model = openmc.model.Model()
 
@@ -101,7 +109,17 @@ outer_cell = openmc.Cell(region=bounding_region)
 outer_cell.fill = dagmc_univ
 
 model.geometry = openmc.Geometry([outer_cell, detector_cell])
-model.materials = openmc.Materials(model.geometry.get_all_materials().values())
+
+# Automatically build Materials object to only include materials used in the simulation.
+DAGMC_mats = []
+for mat_name in dagmc_univ.material_names:
+    if mat_name not in materials_dict:
+        raise ValueError(f"Material '{mat_name}' from DAGMC file not found in materials dictionary. Please add it to the dictionary.")
+    else:
+        print(f"Mapping DAGMC material '{mat_name}' to OpenMC material '{materials_dict[mat_name].name}'")
+        DAGMC_mats.append(materials_dict[mat_name])
+
+model.materials = openmc.Materials(DAGMC_mats + list(model.geometry.get_all_materials().values()))
 
 # Plot the geometry
 model.geometry.plot(
