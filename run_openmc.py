@@ -8,6 +8,7 @@ import os
 parser = argparse.ArgumentParser(description='Run OpenMC simulation with DAGMC geometry.')
 
 parser.add_argument("--ww", action="store_true", help="Use MAGIC method to geneerate weight windows for variance reduction")
+parser.add_argument("--ww_method", default="magic", type=str, help="Weight window generation method (default: magic)")
 parser.add_argument("--dagmc_file", "-f", default="BHDPE_dagmc.h5", help="Path to the DAGMC file (default: BHDPE_dagmc.h5)")
 parser.add_argument("directory", help="Output file directory for OpenMC results")
 parser.add_argument("--photons", action="store_true", help="Include photons in the simulation")
@@ -132,7 +133,7 @@ source.strength = 2e9 # neutrons per second
 
 settings = openmc.Settings()
 settings.batches = 100
-settings.particles = int(1e5)
+settings.particles = int(1e6)
 settings.run_mode = 'fixed source'
 settings.source = source
 settings.photon_transport = args.photons
@@ -141,61 +142,83 @@ model.settings = settings
 
 if args.ww:
 
-    try:
-        os.chdir(f"{args.directory}/ww_generation")
-    except:
-        os.makedirs(f"{args.directory}/ww_generation")
-        os.chdir(f"{args.directory}/ww_generation")
+    if args.ww_method.lower() == "fw_cadis":
+        try:
+            os.chdir(f"{args.directory}/ww_generation")
+        except:
+            os.makedirs(f"{args.directory}/ww_generation")
+            os.chdir(f"{args.directory}/ww_generation")
 
-    # Define weight window spatial mesh
-    voxel_size = 25 # cm
+        # Define weight window spatial mesh
+        voxel_size = 25 # cm
 
-    ww_mesh = openmc.RegularMesh()
-    ww_mesh.dimension = (int((dagmc_univ.bounding_box.upper_right[0] - dagmc_univ.bounding_box.lower_left[0]) / voxel_size),
-                        int((dagmc_univ.bounding_box.upper_right[1] - dagmc_univ.bounding_box.lower_left[1]) / voxel_size),
-                        int((dagmc_univ.bounding_box.upper_right[2] - dagmc_univ.bounding_box.lower_left[2]) / voxel_size))
-    ww_mesh.lower_left = dagmc_univ.bounding_box.lower_left
-    ww_mesh.upper_right =  dagmc_univ.bounding_box.upper_right
+        ww_mesh = openmc.RegularMesh()
+        ww_mesh.dimension = (int((dagmc_univ.bounding_box.upper_right[0] - dagmc_univ.bounding_box.lower_left[0]) / voxel_size),
+                            int((dagmc_univ.bounding_box.upper_right[1] - dagmc_univ.bounding_box.lower_left[1]) / voxel_size),
+                            int((dagmc_univ.bounding_box.upper_right[2] - dagmc_univ.bounding_box.lower_left[2]) / voxel_size))
+        ww_mesh.lower_left = dagmc_univ.bounding_box.lower_left
+        ww_mesh.upper_right =  dagmc_univ.bounding_box.upper_right
 
-    # Generate model for running random ray solve
-    # Create a deep copy but fix material name mappings
-    ww_model = copy.deepcopy(model)
+        # Generate model for running random ray solve
+        # Create a deep copy but fix material name mappings
+        ww_model = copy.deepcopy(model)
 
-    # Random ray solver requires a fixed source distribution, so we can use the same source but make it isotropic
-    # ww_model.settings.source.angle = openmc.stats.Isotropic()
+        # Random ray solver requires a fixed source distribution, so we can use the same source but make it isotropic
+        # ww_model.settings.source.angle = openmc.stats.Isotropic()
 
-    print("##### CONVERT TO MGXS #####")
-    ww_model.convert_to_multigroup(nparticles=100000,
-                                   groups="CCFE-709")
-    print("##### CONVERT TO RANDOM RAY #####")
-    ww_model.convert_to_random_ray()
-    ww_model.settings.random_ray["source_region_meshes"] = [(ww_mesh, [ww_model.geometry.root_universe])]
-    #ww_model.settings.source = None  # No need for a source in the random ray solve, as it will be generated from the mesh
+        print("##### CONVERT TO MGXS #####")
+        ww_model.convert_to_multigroup(nparticles=100000,
+                                    groups="CCFE-709")
+        print("##### CONVERT TO RANDOM RAY #####")
+        ww_model.convert_to_random_ray()
+        ww_model.settings.random_ray["source_region_meshes"] = [(ww_mesh, [ww_model.geometry.root_universe])]
+        #ww_model.settings.source = None  # No need for a source in the random ray solve, as it will be generated from the mesh
 
-    # (Optional) Improve fidelity of the random ray solver by enabling linear sources
-    ww_model.settings.random_ray['source_shape'] = 'linear'
+        # (Optional) Improve fidelity of the random ray solver by enabling linear sources
+        ww_model.settings.random_ray['source_shape'] = 'linear'
 
-    # (Optional) Increase the number of rays/batch, to reduce uncertainty
-    ww_model.settings.particles = 100000
+        # (Optional) Increase the number of rays/batch, to reduce uncertainty
+        ww_model.settings.particles = 100000
 
-    # Create weight window object and adjust parameters
-    wwg = openmc.WeightWindowGenerator(
-        method='fw_cadis',
-        mesh=ww_mesh,
-        #max_realizations=settings.batches
-    )
+        # Create weight window object and adjust parameters
+        wwg = openmc.WeightWindowGenerator(
+            method='fw_cadis',
+            mesh=ww_mesh,
+            #max_realizations=settings.batches
+        )
 
-    # Add generator to Settings instance
-    ww_model.settings.weight_window_generators = wwg
-    print("##### RUNNING FW-CADIS WEIGHT WINDOW GENERATION #####")
-    ww_model.run()
+        # Add generator to Settings instance
+        ww_model.settings.weight_window_generators = wwg
+        print("##### RUNNING FW-CADIS WEIGHT WINDOW GENERATION #####")
+        ww_model.run()
 
-    os.chdir("../..")
+        os.chdir("../..")
 
-    model.settings.weight_windows_file = f"{args.directory}/ww_generation/weight_windows.h5"
-    model.settings.weight_windows_on = True
-    model.settings.weight_window_checkpoints = {'collision': True, 'surface': True}
-    model.settings.survival_biasing = False
+        model.settings.weight_windows_file = f"{args.directory}/ww_generation/weight_windows.h5"
+        model.settings.weight_windows_on = True
+        model.settings.weight_window_checkpoints = {'collision': True, 'surface': True}
+        model.settings.survival_biasing = False
+    
+    elif args.ww_method.lower() == "magic":
+        # Define weight window spatial mesh
+        voxel_size = 50 # cm
+
+        ww_mesh = openmc.RegularMesh()
+        ww_mesh.dimension = (int((dagmc_univ.bounding_box.upper_right[0] - dagmc_univ.bounding_box.lower_left[0]) / voxel_size),
+                            int((dagmc_univ.bounding_box.upper_right[1] - dagmc_univ.bounding_box.lower_left[1]) / voxel_size),
+                            int((dagmc_univ.bounding_box.upper_right[2] - dagmc_univ.bounding_box.lower_left[2]) / voxel_size))
+        ww_mesh.lower_left = dagmc_univ.bounding_box.lower_left
+        ww_mesh.upper_right =  dagmc_univ.bounding_box.upper_right
+
+        # Create weight window object and adjust parameters
+        wwg = openmc.WeightWindowGenerator(
+            method='magic',
+            mesh=ww_mesh,
+            max_realizations=settings.batches
+        )
+
+        # Add generator to Settings instance
+        settings.weight_window_generators = wwg
 
 # Tallies
 tallies = openmc.Tallies()
@@ -235,6 +258,7 @@ energy_filter = openmc.EnergyFilter.from_group_structure("CCFE-709") # 14.06 MeV
 # Particle filters
 neutron_filter = openmc.ParticleFilter('neutron')
 photon_filter = openmc.ParticleFilter('photon')
+dual_particle_filter = openmc.ParticleFilter(['neutron', 'photon'])
 
 # Mesh Flux
 mesh_flux_tally = openmc.Tally(name='mesh flux tally')
@@ -252,7 +276,7 @@ mesh_photon_dose.scores = ['flux']  # Dose will be calculated via the dose coeff
 
 # Detector Tally
 detector_tally = openmc.Tally(name='detector tally')
-detector_tally.filters = [openmc.CellFilter(detector_cell), energy_filter, neutron_filter]
+detector_tally.filters = [openmc.CellFilter(detector_cell), energy_filter, dual_particle_filter]
 detector_tally.scores = ['flux']
 
 tallies.append(mesh_flux_tally)

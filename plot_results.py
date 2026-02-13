@@ -91,20 +91,39 @@ photon_dose_fig.savefig(f'{args.directory}/XY_photon_dose_rate.png', dpi=300)
 det_volume = (np.pi * (1.5)**2) * 1  # cm^3
 
 detector_tally = sp.get_tally(name='detector tally')
-detector_flux = detector_tally.get_slice(scores=['flux']).mean.flatten()
-detector_flux = detector_flux / det_volume  # Assuming detector volume is 1
+detector_flux_n = detector_tally.get_reshaped_data()[0, :, 0, 0, 0] 
+detector_flux_p = detector_tally.get_reshaped_data()[0, :, 1, 0, 0]
 
-det_spec_fig, det_spec_ax = plt.subplots(figsize=(8,6))
-energy_bins = openmc.mgxs.GROUP_STRUCTURES['CCFE-709']
-bin_centers = 0.5 * (energy_bins[:-1] + energy_bins[1:])
-det_spec_ax.step(bin_centers, detector_flux, where='mid')
-det_spec_ax.set_xscale('log')
-det_spec_ax.set_yscale('log')
-det_spec_ax.set_xlabel('Energy (eV)')
-det_spec_ax.set_ylabel('Neutron Flux (n/cm²-s-eV)')
-det_spec_ax.set_title('Neutron Energy Spectrum at Detector')
+detector_flux_n = detector_flux_n / det_volume 
+detector_flux_p = detector_flux_p / det_volume  
+
+det_spec_fig, det_spec_ax = plt.subplots(1, 2, figsize=(16,6))
+det_spec_ax[0].spines['top'].set_visible(False)
+det_spec_ax[0].spines['right'].set_visible(False)
+det_spec_ax[1].spines['top'].set_visible(False)
+det_spec_ax[1].spines['right'].set_visible(False)
+
+energy_bins = detector_tally.find_filter(openmc.EnergyFilter).values
+bin_centers = 0.5 * (energy_bins[:-1] + energy_bins[1:]) / 1e6  # Convert from eV to MeV
+
+det_spec_ax[0].step(bin_centers, detector_flux_n, where='mid')
+det_spec_ax[0].set_xlim(0, 20)
+det_spec_ax[0].set_xlabel('Energy (MeV)')
+det_spec_ax[0].set_ylabel('Neutron Flux (n/cm²-s)')
+det_spec_ax[0].set_title('Neutron Energy Spectrum at Detector')
+
+det_spec_ax[1].step(bin_centers, detector_flux_p, where='mid', color='orange')
+det_spec_ax[1].set_yscale('log')
+det_spec_ax[1].set_xscale('log')
+det_spec_ax[1].set_xlabel('Energy (MeV)')
+det_spec_ax[1].set_ylabel('Photon Flux (n/cm²-s)')
+det_spec_ax[1].set_title('Photon Energy Spectrum at Detector')
+
 det_spec_fig.tight_layout()
 det_spec_fig.savefig(f'{args.directory}/detector_neutron_spectrum.png', dpi=300)
+
+
+
 
 plt.show()
 
