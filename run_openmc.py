@@ -12,6 +12,8 @@ parser.add_argument("--ww_method", default="magic", type=str, help="Weight windo
 parser.add_argument("--dagmc_file", "-f", default="BHDPE_dagmc.h5", help="Path to the DAGMC file (default: BHDPE_dagmc.h5)")
 parser.add_argument("directory", help="Output file directory for OpenMC results")
 parser.add_argument("--photons", action="store_true", help="Include photons in the simulation")
+parser.add_argument("--batches", type=int, default=100, help="Number of batches for the OpenMC simulation (default: 100)")
+parser.add_argument("--particles", type=int, default=100000, help="Number of particles per batch for the OpenMC simulation (default: 100000)")
 
 args = parser.parse_args()
 
@@ -86,7 +88,13 @@ materials_dict = {
     'B_HDPE': B_HDPE
 }
 
-def build_model(dagmc_file, source_position=(0, 120, 95), source_strength=2e9, simulate_photons=False, ww=False, ww_method="magic"):
+def build_model(dagmc_file, source_position=(0, 120, 95), 
+                source_strength=2e9, 
+                simulate_photons=False, 
+                ww=False, 
+                ww_method="magic",
+                batches=100,
+                particles=100000):
 
     model = openmc.model.Model()
 
@@ -151,8 +159,8 @@ def build_model(dagmc_file, source_position=(0, 120, 95), source_strength=2e9, s
     source.strength = source_strength # neutrons per second
 
     settings = openmc.Settings()
-    settings.batches = 100
-    settings.particles = int(3e5)
+    settings.batches = batches
+    settings.particles = particles
     settings.run_mode = 'fixed source'
     settings.source = source
     settings.photon_transport = simulate_photons
