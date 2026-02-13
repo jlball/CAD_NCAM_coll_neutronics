@@ -15,7 +15,6 @@ parser.add_argument("--photons", action="store_true", help="Include photons in t
 
 args = parser.parse_args()
 
-
 def get_region_from_bbox(bbox, boundary_type='vacuum'):
     xmin, ymin, zmin = bbox.lower_left
     xmax, ymax, zmax = bbox.upper_right
@@ -87,221 +86,229 @@ materials_dict = {
     'B_HDPE': B_HDPE
 }
 
-model = openmc.model.Model()
+def build_model(dagmc_file, source_position=(0, 120, 95), source_strength=2e9, simulate_photons=False, ww=False, ww_method="magic"):
 
-# Detector region
-det_thickness = 1 # cm
-det_diameter = 3 #cm
-detector_front = openmc.YPlane(-290)
-detector_back = openmc.YPlane(-290 - det_thickness)
-detector_cyl = openmc.YCylinder(r=det_diameter/2, z0=95)
+    model = openmc.model.Model()
 
-detector_region = -detector_front & +detector_back & -detector_cyl
-detector_cell = openmc.Cell(region=detector_region)
-detector_cell.fill = deuterated_xylene
+    # Detector region
+    det_thickness = 1 # cm
+    det_diameter = 3 #cm
+    detector_front = openmc.YPlane(-290)
+    detector_back = openmc.YPlane(-290 - det_thickness)
+    detector_cyl = openmc.YCylinder(r=det_diameter/2, z0=95)
 
-# Create OpenMC geometry from DAGMC file
-dagmc_univ = openmc.DAGMCUniverse(args.dagmc_file, auto_geom_ids=True)
+    detector_region = -detector_front & +detector_back & -detector_cyl
+    detector_cell = openmc.Cell(region=detector_region)
+    detector_cell.fill = deuterated_xylene
 
-bounding_region = get_region_from_bbox(dagmc_univ.bounding_box, boundary_type='vacuum') & ~detector_region
+    # Create OpenMC geometry from DAGMC file
+    dagmc_univ = openmc.DAGMCUniverse(dagmc_file, auto_geom_ids=True)
 
-outer_cell = openmc.Cell(region=bounding_region)
-outer_cell.fill = dagmc_univ
+    bounding_region = get_region_from_bbox(dagmc_univ.bounding_box, boundary_type='vacuum') & ~detector_region
 
-model.geometry = openmc.Geometry([outer_cell, detector_cell])
+    outer_cell = openmc.Cell(region=bounding_region)
+    outer_cell.fill = dagmc_univ
 
-# Automatically build Materials object to only include materials used in the simulation.
-DAGMC_mats = []
-for mat_name in dagmc_univ.material_names:
-    if mat_name not in materials_dict:
-        raise ValueError(f"Material '{mat_name}' from DAGMC file not found in materials dictionary. Please add it to the dictionary.")
-    else:
-        print(f"Mapping DAGMC material '{mat_name}' to OpenMC material '{materials_dict[mat_name].name}'")
-        DAGMC_mats.append(materials_dict[mat_name])
+    model.geometry = openmc.Geometry([outer_cell, detector_cell])
 
-model.materials = openmc.Materials(DAGMC_mats + list(model.geometry.get_all_materials().values()))
+    # Automatically build Materials object to only include materials used in the simulation.
+    DAGMC_mats = []
+    for mat_name in dagmc_univ.material_names:
+        if mat_name not in materials_dict:
+            raise ValueError(f"Material '{mat_name}' from DAGMC file not found in materials dictionary. Please add it to the dictionary.")
+        else:
+            print(f"Mapping DAGMC material '{mat_name}' to OpenMC material '{materials_dict[mat_name].name}'")
+            DAGMC_mats.append(materials_dict[mat_name])
 
-# Plot the geometry
-model.geometry.plot(
-    #ax=ax,
-    basis='yz',
-    origin=(0, -150, 100),
-    width=(700, 300),
-    pixels=(2100, 1500),
-    color_by='material',
-)
+    model.materials = openmc.Materials(DAGMC_mats + list(model.geometry.get_all_materials().values()))
 
-plt.savefig('YZ_geometry.png', dpi=300)
-plt.close()
-
-# Settings
-source = openmc.IndependentSource()
-source.space = openmc.stats.Point((5, 120, 95))
-
-# source.angle = openmc.stats.PolarAzimuthal(
-#     mu=openmc.stats.Uniform(0, 1.0),  # Isotropic in the forward hemisphere
-#     phi=openmc.stats.Uniform(0, 2 * np.pi),
-#     reference_uvw=(0, -1, 0)
-# )
-
-source.angle = openmc.stats.Isotropic()  # Isotropic in all directions
-
-source.energy = openmc.stats.Discrete([14.06e6], [1.0])
-source.strength = 2e9 # neutrons per second
-
-settings = openmc.Settings()
-settings.batches = 100
-settings.particles = int(3e5)
-settings.run_mode = 'fixed source'
-settings.source = source
-settings.photon_transport = args.photons
-
-model.settings = settings
-
-if args.ww:
-
-    if args.ww_method.lower() == "fw_cadis":
-        try:
-            os.chdir(f"{args.directory}/ww_generation")
-        except:
-            os.makedirs(f"{args.directory}/ww_generation")
-            os.chdir(f"{args.directory}/ww_generation")
-
-        # Define weight window spatial mesh
-        voxel_size = 25 # cm
-
-        ww_mesh = openmc.RegularMesh()
-        ww_mesh.dimension = (int((dagmc_univ.bounding_box.upper_right[0] - dagmc_univ.bounding_box.lower_left[0]) / voxel_size),
-                            int((dagmc_univ.bounding_box.upper_right[1] - dagmc_univ.bounding_box.lower_left[1]) / voxel_size),
-                            int((dagmc_univ.bounding_box.upper_right[2] - dagmc_univ.bounding_box.lower_left[2]) / voxel_size))
-        ww_mesh.lower_left = dagmc_univ.bounding_box.lower_left
-        ww_mesh.upper_right =  dagmc_univ.bounding_box.upper_right
-
-        # Generate model for running random ray solve
-        # Create a deep copy but fix material name mappings
-        ww_model = copy.deepcopy(model)
-
-        # Random ray solver requires a fixed source distribution, so we can use the same source but make it isotropic
-        # ww_model.settings.source.angle = openmc.stats.Isotropic()
-
-        print("##### CONVERT TO MGXS #####")
-        ww_model.convert_to_multigroup(nparticles=100000,
-                                    groups="CCFE-709")
-        print("##### CONVERT TO RANDOM RAY #####")
-        ww_model.convert_to_random_ray()
-        ww_model.settings.random_ray["source_region_meshes"] = [(ww_mesh, [ww_model.geometry.root_universe])]
-        #ww_model.settings.source = None  # No need for a source in the random ray solve, as it will be generated from the mesh
-
-        # (Optional) Improve fidelity of the random ray solver by enabling linear sources
-        ww_model.settings.random_ray['source_shape'] = 'linear'
-
-        # (Optional) Increase the number of rays/batch, to reduce uncertainty
-        ww_model.settings.particles = 100000
-
-        # Create weight window object and adjust parameters
-        wwg = openmc.WeightWindowGenerator(
-            method='fw_cadis',
-            mesh=ww_mesh,
-            #max_realizations=settings.batches
-        )
-
-        # Add generator to Settings instance
-        ww_model.settings.weight_window_generators = wwg
-        print("##### RUNNING FW-CADIS WEIGHT WINDOW GENERATION #####")
-        ww_model.run()
-
-        os.chdir("../..")
-
-        model.settings.weight_windows_file = f"{args.directory}/ww_generation/weight_windows.h5"
-        model.settings.weight_windows_on = True
-        model.settings.weight_window_checkpoints = {'collision': True, 'surface': True}
-        model.settings.survival_biasing = False
-    
-    elif args.ww_method.lower() == "magic":
-        # Define weight window spatial mesh
-        voxel_size = 50 # cm
-
-        ww_mesh = openmc.RegularMesh()
-        ww_mesh.dimension = (int((dagmc_univ.bounding_box.upper_right[0] - dagmc_univ.bounding_box.lower_left[0]) / voxel_size),
-                            int((dagmc_univ.bounding_box.upper_right[1] - dagmc_univ.bounding_box.lower_left[1]) / voxel_size),
-                            int((dagmc_univ.bounding_box.upper_right[2] - dagmc_univ.bounding_box.lower_left[2]) / voxel_size))
-        ww_mesh.lower_left = dagmc_univ.bounding_box.lower_left
-        ww_mesh.upper_right =  dagmc_univ.bounding_box.upper_right
-
-        # Create weight window object and adjust parameters
-        wwg = openmc.WeightWindowGenerator(
-            method='magic',
-            mesh=ww_mesh,
-            max_realizations=settings.batches
-        )
-
-        # Add generator to Settings instance
-        settings.weight_window_generators = wwg
-
-# Tallies
-tallies = openmc.Tallies()
-
-# XY Mesh for flux and dose tallies
-mesh = openmc.RegularMesh()
-
-mesh.lower_left = (dagmc_univ.bounding_box.lower_left[0], dagmc_univ.bounding_box.lower_left[1], 0)
-mesh.upper_right = dagmc_univ.bounding_box.upper_right
-
-x_width =  mesh.upper_right[0] - mesh.lower_left[0] 
-y_width =  mesh.upper_right[1] - mesh.lower_left[1]
-
-mesh_size = 4 # cm
-
-mesh.dimension = (int(x_width/mesh_size), int(y_width/mesh_size), 1)  # Adjusted for better resolution
-
-mesh_filter = openmc.MeshFilter(mesh)
-
-energy_bins_n, dose_coeffs_n = openmc.data.dose_coefficients(
-        particle="neutron", geometry="AP"
+    # Plot the geometry
+    model.geometry.plot(
+        #ax=ax,
+        basis='yz',
+        origin=(0, -150, 100),
+        width=(700, 300),
+        pixels=(2100, 1500),
+        color_by='material',
     )
 
-energy_bins_p, dose_coeffs_p = openmc.data.dose_coefficients(
-        particle="photon", geometry="AP"
-    )
+    plt.savefig('YZ_geometry.png', dpi=300)
+    plt.close()
 
-neutron_dose_filter = openmc.EnergyFunctionFilter(energy_bins_n, dose_coeffs_n)
-neutron_dose_filter.interpolation = "cubic"  # cubic interpolation is recommended by ICRP
+    # Settings
+    source = openmc.IndependentSource()
+    source.space = openmc.stats.Point(source_position)
 
-photon_dose_filter = openmc.EnergyFunctionFilter(energy_bins_p, dose_coeffs_p)
-photon_dose_filter.interpolation = "cubic"
+    # source.angle = openmc.stats.PolarAzimuthal(
+    #     mu=openmc.stats.Uniform(0, 1.0),  # Isotropic in the forward hemisphere
+    #     phi=openmc.stats.Uniform(0, 2 * np.pi),
+    #     reference_uvw=(0, -1, 0)
+    # )
 
-# Energy filter
-energy_filter = openmc.EnergyFilter.from_group_structure("CCFE-709") # 14.06 MeV neutrons
+    source.angle = openmc.stats.Isotropic()  # Isotropic in all directions
 
-# Particle filters
-neutron_filter = openmc.ParticleFilter('neutron')
-photon_filter = openmc.ParticleFilter('photon')
-dual_particle_filter = openmc.ParticleFilter(['neutron', 'photon'])
+    source.energy = openmc.stats.Discrete([14.06e6], [1.0])
+    source.strength = source_strength # neutrons per second
 
-# Mesh Flux
-mesh_flux_tally = openmc.Tally(name='mesh flux tally')
-mesh_flux_tally.filters = [mesh_filter, neutron_filter]
-mesh_flux_tally.scores = ['flux']  # Add dose-rate score
+    settings = openmc.Settings()
+    settings.batches = 100
+    settings.particles = int(3e5)
+    settings.run_mode = 'fixed source'
+    settings.source = source
+    settings.photon_transport = simulate_photons
 
-# Mesh Neutron Dose
-mesh_neutron_dose = openmc.Tally(name='mesh neutron dose tally')
-mesh_neutron_dose.filters = [mesh_filter, neutron_dose_filter, neutron_filter]
-mesh_neutron_dose.scores = ['flux']  # Dose will be calculated via the
+    model.settings = settings
 
-mesh_photon_dose = openmc.Tally(name='mesh photon dose tally')
-mesh_photon_dose.filters = [mesh_filter, photon_dose_filter, photon_filter]
-mesh_photon_dose.scores = ['flux']  # Dose will be calculated via the dose coefficients
+    if ww:
 
-# Detector Tally
-detector_tally = openmc.Tally(name='detector tally')
-detector_tally.filters = [openmc.CellFilter(detector_cell), energy_filter, dual_particle_filter]
-detector_tally.scores = ['flux']
+        if ww_method.lower() == "fw_cadis":
+            try:
+                os.chdir(f"{args.directory}/ww_generation")
+            except:
+                os.makedirs(f"{args.directory}/ww_generation")
+                os.chdir(f"{args.directory}/ww_generation")
 
-tallies.append(mesh_flux_tally)
-tallies.append(mesh_neutron_dose)
-tallies.append(mesh_photon_dose)
-tallies.append(detector_tally)
-model.tallies = tallies
+            # Define weight window spatial mesh
+            voxel_size = 25 # cm
 
-# Run OpenMC simulation
-model.run(cwd=args.directory)
+            ww_mesh = openmc.RegularMesh()
+            ww_mesh.dimension = (int((dagmc_univ.bounding_box.upper_right[0] - dagmc_univ.bounding_box.lower_left[0]) / voxel_size),
+                                int((dagmc_univ.bounding_box.upper_right[1] - dagmc_univ.bounding_box.lower_left[1]) / voxel_size),
+                                int((dagmc_univ.bounding_box.upper_right[2] - dagmc_univ.bounding_box.lower_left[2]) / voxel_size))
+            ww_mesh.lower_left = dagmc_univ.bounding_box.lower_left
+            ww_mesh.upper_right =  dagmc_univ.bounding_box.upper_right
+
+            # Generate model for running random ray solve
+            # Create a deep copy but fix material name mappings
+            ww_model = copy.deepcopy(model)
+
+            # Random ray solver requires a fixed source distribution, so we can use the same source but make it isotropic
+            # ww_model.settings.source.angle = openmc.stats.Isotropic()
+
+            print("##### CONVERT TO MGXS #####")
+            ww_model.convert_to_multigroup(nparticles=100000,
+                                        groups="CCFE-709")
+            print("##### CONVERT TO RANDOM RAY #####")
+            ww_model.convert_to_random_ray()
+            ww_model.settings.random_ray["source_region_meshes"] = [(ww_mesh, [ww_model.geometry.root_universe])]
+            #ww_model.settings.source = None  # No need for a source in the random ray solve, as it will be generated from the mesh
+
+            # (Optional) Improve fidelity of the random ray solver by enabling linear sources
+            ww_model.settings.random_ray['source_shape'] = 'linear'
+
+            # (Optional) Increase the number of rays/batch, to reduce uncertainty
+            ww_model.settings.particles = 100000
+
+            # Create weight window object and adjust parameters
+            wwg = openmc.WeightWindowGenerator(
+                method='fw_cadis',
+                mesh=ww_mesh,
+                #max_realizations=settings.batches
+            )
+
+            # Add generator to Settings instance
+            ww_model.settings.weight_window_generators = wwg
+            print("##### RUNNING FW-CADIS WEIGHT WINDOW GENERATION #####")
+            ww_model.run()
+
+            os.chdir("../..")
+
+            model.settings.weight_windows_file = f"{args.directory}/ww_generation/weight_windows.h5"
+            model.settings.weight_windows_on = True
+            model.settings.weight_window_checkpoints = {'collision': True, 'surface': True}
+            model.settings.survival_biasing = False
+        
+        elif args.ww_method.lower() == "magic":
+            # Define weight window spatial mesh
+            voxel_size = 50 # cm
+
+            ww_mesh = openmc.RegularMesh()
+            ww_mesh.dimension = (int((dagmc_univ.bounding_box.upper_right[0] - dagmc_univ.bounding_box.lower_left[0]) / voxel_size),
+                                int((dagmc_univ.bounding_box.upper_right[1] - dagmc_univ.bounding_box.lower_left[1]) / voxel_size),
+                                int((dagmc_univ.bounding_box.upper_right[2] - dagmc_univ.bounding_box.lower_left[2]) / voxel_size))
+            ww_mesh.lower_left = dagmc_univ.bounding_box.lower_left
+            ww_mesh.upper_right =  dagmc_univ.bounding_box.upper_right
+
+            # Create weight window object and adjust parameters
+            wwg = openmc.WeightWindowGenerator(
+                method='magic',
+                mesh=ww_mesh,
+                max_realizations=settings.batches
+            )
+
+            # Add generator to Settings instance
+            settings.weight_window_generators = wwg
+
+    # Tallies
+    tallies = openmc.Tallies()
+
+    # XY Mesh for flux and dose tallies
+    mesh = openmc.RegularMesh()
+
+    mesh.lower_left = (dagmc_univ.bounding_box.lower_left[0], dagmc_univ.bounding_box.lower_left[1], 0)
+    mesh.upper_right = dagmc_univ.bounding_box.upper_right
+
+    x_width =  mesh.upper_right[0] - mesh.lower_left[0] 
+    y_width =  mesh.upper_right[1] - mesh.lower_left[1]
+
+    mesh_size = 4 # cm
+
+    mesh.dimension = (int(x_width/mesh_size), int(y_width/mesh_size), 1)  # Adjusted for better resolution
+
+    mesh_filter = openmc.MeshFilter(mesh)
+
+    energy_bins_n, dose_coeffs_n = openmc.data.dose_coefficients(
+            particle="neutron", geometry="AP"
+        )
+
+    energy_bins_p, dose_coeffs_p = openmc.data.dose_coefficients(
+            particle="photon", geometry="AP"
+        )
+
+    neutron_dose_filter = openmc.EnergyFunctionFilter(energy_bins_n, dose_coeffs_n)
+    neutron_dose_filter.interpolation = "cubic"  # cubic interpolation is recommended by ICRP
+
+    photon_dose_filter = openmc.EnergyFunctionFilter(energy_bins_p, dose_coeffs_p)
+    photon_dose_filter.interpolation = "cubic"
+
+    # Energy filter
+    energy_filter = openmc.EnergyFilter.from_group_structure("CCFE-709") # 14.06 MeV neutrons
+
+    # Particle filters
+    neutron_filter = openmc.ParticleFilter('neutron')
+    photon_filter = openmc.ParticleFilter('photon')
+    dual_particle_filter = openmc.ParticleFilter(['neutron', 'photon'])
+
+    # Mesh Flux
+    mesh_flux_tally = openmc.Tally(name='mesh flux tally')
+    mesh_flux_tally.filters = [mesh_filter, neutron_filter]
+    mesh_flux_tally.scores = ['flux']  # Add dose-rate score
+
+    # Mesh Neutron Dose
+    mesh_neutron_dose = openmc.Tally(name='mesh neutron dose tally')
+    mesh_neutron_dose.filters = [mesh_filter, neutron_dose_filter, neutron_filter]
+    mesh_neutron_dose.scores = ['flux']  # Dose will be calculated via the
+
+    mesh_photon_dose = openmc.Tally(name='mesh photon dose tally')
+    mesh_photon_dose.filters = [mesh_filter, photon_dose_filter, photon_filter]
+    mesh_photon_dose.scores = ['flux']  # Dose will be calculated via the dose coefficients
+
+    # Detector Tally
+    detector_tally = openmc.Tally(name='detector tally')
+    detector_tally.filters = [openmc.CellFilter(detector_cell), energy_filter, dual_particle_filter]
+    detector_tally.scores = ['flux']
+
+    tallies.append(mesh_flux_tally)
+    tallies.append(mesh_neutron_dose)
+    tallies.append(mesh_photon_dose)
+    tallies.append(detector_tally)
+    model.tallies = tallies
+
+    return model
+
+if __name__ == "__main__":
+    # Build OpenMC model object from DAGMC file and other settings
+    model = build_model(args.dagmc_file, source_position=(0, 120, 95), source_strength=2e9, simulate_photons=args.photons, ww=args.ww, ww_method=args.ww_method)
+
+    # Run OpenMC simulation
+    model.run(cwd=args.directory)
