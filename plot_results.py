@@ -108,6 +108,7 @@ bin_centers = 0.5 * (energy_bins[:-1] + energy_bins[1:]) / 1e6  # Convert from e
 
 det_spec_ax[0].step(bin_centers, detector_flux_n, where='mid')
 det_spec_ax[0].set_xlim(0, 20)
+det_spec_ax[0].set_yscale("log")
 det_spec_ax[0].set_xlabel('Energy (MeV)')
 det_spec_ax[0].set_ylabel('Neutron Flux (n/cm²-s)')
 det_spec_ax[0].set_title('Neutron Energy Spectrum at Detector')

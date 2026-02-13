@@ -101,7 +101,7 @@ outer_cell = openmc.Cell(region=bounding_region)
 outer_cell.fill = dagmc_univ
 
 model.geometry = openmc.Geometry([outer_cell, detector_cell])
-model.materials = materials
+model.materials = openmc.Materials(model.geometry.get_all_materials().values())
 
 # Plot the geometry
 model.geometry.plot(
@@ -118,7 +118,7 @@ plt.close()
 
 # Settings
 source = openmc.IndependentSource()
-source.space = openmc.stats.Point((0, 120, 95))
+source.space = openmc.stats.Point((5, 120, 95))
 
 # source.angle = openmc.stats.PolarAzimuthal(
 #     mu=openmc.stats.Uniform(0, 1.0),  # Isotropic in the forward hemisphere
@@ -133,7 +133,7 @@ source.strength = 2e9 # neutrons per second
 
 settings = openmc.Settings()
 settings.batches = 100
-settings.particles = int(1e6)
+settings.particles = int(3e5)
 settings.run_mode = 'fixed source'
 settings.source = source
 settings.photon_transport = args.photons
