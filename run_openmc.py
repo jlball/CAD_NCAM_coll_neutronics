@@ -17,7 +17,8 @@ parser.add_argument("--batches", type=int, default=100, help="Number of batches 
 parser.add_argument("--particles", type=int, default=100000, help="Number of particles per batch for the OpenMC simulation (default: 100000)")
 parser.add_argument("--low_energy", type=float, default=None, help="Lower energy bound for neutron transport")
 
-args = parser.parse_args()
+if __name__ == "__main__":
+    args = parser.parse_args()
 
 def get_region_from_bbox(bbox, boundary_type='vacuum'):
     xmin, ymin, zmin = bbox.lower_left
@@ -34,9 +35,9 @@ def get_region_from_bbox(bbox, boundary_type='vacuum'):
     return bounding_box_region
 
 # Materials
-alumminum = openmc.Material(name='aluminum')
-alumminum.add_element('Al', 1.0)
-alumminum.set_density('g/cm3', 2.7)
+aluminum = openmc.Material(name='aluminum')
+aluminum.add_element('Al', 1.0)
+aluminum.set_density('g/cm3', 2.7)
 
 # From PNNL Material Compendium (Ordinary Concrete)
 concrete = openmc.Material(name='concrete')
@@ -81,7 +82,7 @@ B_HDPE.add_nuclide('B11', 0.037436042)
 B_HDPE.set_density('g/cm3', 1)
 
 materials_dict = {
-    'aluminum': alumminum,
+    'aluminum': aluminum,
     'concrete': concrete,
     'carbon_fiber': carbon_fiber,
     'kretekast': kretekast,
@@ -90,7 +91,7 @@ materials_dict = {
     'B_HDPE': B_HDPE
 }
 
-def build_model(dagmc_file, source_position=(0, 120, 95), 
+def build_model(dagmc_file, source_position=(0, 150, 95), 
                 source_strength=2e9, 
                 simulate_photons=False, 
                 ww=False, 

@@ -7,13 +7,14 @@ import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser(description="Run OpenMC simulations with varying source positions.")
 parser.add_argument("directory", type=str, default="openmc_simulations", help="Directory to store OpenMC simulation results.")
-parser.add_argument("--dagmc_file", "-f", type=str, required=True, help="Path to the DAGMC file.")
+parser.add_argument("--dagmc_file", "-f", type=str, help="Path to the DAGMC file.")
 parser.add_argument("--photons", action="store_true", help="Enable photon transport in the simulation.")
 parser.add_argument("--ww", action="store_true", help="Enable weight window generation.")
 parser.add_argument("--ww_method", type=str, default="magic", choices=["magic", "fw_cadis", "pre-generated"], help="Method for weight window generation (default: magic).")
 parser.add_argument("--ww_path", type=str, help="Path to pre-generated weight window file (required if ww_method is 'pre-generated').")
 parser.add_argument("--batches", type=int, default=100, help="Number of batches for the OpenMC simulation (default: 100).")
 parser.add_argument("--particles", type=int, default=100000 , help="Number of particles per batch for the OpenMC simulation (default: 100000).")
+parser.add_argument("--postprocess", action="store_true", help="Run post-processing and plotting after simulations.")
 args = parser.parse_args()
 
 #source_x_positions = [0.00, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]  # cm
@@ -22,56 +23,57 @@ source_x_positions = [0.00, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.
 
 sim_directories = [f"{args.directory}/{x_pos}_cm_source_x" for x_pos in source_x_positions]
 
-run_simulation = True 
+if not args.postprocess:
+    run_simulation = True 
 
-try:
-    os.mkdir(args.directory)
-except:
-    overwrite = input(f"Directory '{args.directory}' already exists. Do you want to run simulations and overwrite existing results? (y/n) ")
-    if overwrite.lower() != 'y':
-        run_simulation = False
+    try:
+        os.mkdir(args.directory)
+    except:
+        overwrite = input(f"Directory '{args.directory}' already exists. Do you want to run simulations and overwrite existing results? (y/n) ")
+        if overwrite.lower() != 'y':
+            run_simulation = False
 
-if run_simulation:
-    for i, x_pos in enumerate(source_x_positions):
-        print(f"Running simulation with source at x = {x_pos} cm")
+    if run_simulation:
+        for i, x_pos in enumerate(source_x_positions):
+            print(f"Running simulation with source at x = {x_pos} cm")
 
-        if args.ww and not args.ww_method.lower() == "pre-generated":
-            if i == 0:
-                print("Generating weight windows for the first simulation...")
-                model = build_model(args.dagmc_file, 
-                                    source_position=(x_pos, 120, 95), 
-                                    source_strength=2e9, 
-                                    simulate_photons=args.photons, 
-                                    ww=args.ww, 
-                                    ww_method=args.ww_method,
-                                    batches=args.batches,
-                                    particles=args.particles)
+            if args.ww and not args.ww_method.lower() == "pre-generated":
+                if i == 0:
+                    print("Generating weight windows for the first simulation...")
+                    model = build_model(args.dagmc_file, 
+                                        source_position=(x_pos, 120, 95), 
+                                        source_strength=2e9, 
+                                        simulate_photons=args.photons, 
+                                        ww=args.ww, 
+                                        ww_method=args.ww_method,
+                                        batches=args.batches,
+                                        particles=args.particles)
 
-            else:
-                print("Reusing weight windows from previous simulation...")
+                else:
+                    print("Reusing weight windows from previous simulation...")
+                    model = build_model(args.dagmc_file, 
+                                        source_position=(x_pos, 120, 95), 
+                                        source_strength=2e9, 
+                                        simulate_photons=args.photons, 
+                                        ww=args.ww, 
+                                        ww_method="pre-generated",
+                                        ww_path=f"{sim_directories[0]}/weight_windows.h5",
+                                        batches=args.batches,
+                                        particles=args.particles)
+
+            if args.ww and args.ww_method.lower() == "pre-generated":
+                print("Using user-provided pre-generated weight windows...")
                 model = build_model(args.dagmc_file, 
                                     source_position=(x_pos, 120, 95), 
                                     source_strength=2e9, 
                                     simulate_photons=args.photons, 
                                     ww=args.ww, 
                                     ww_method="pre-generated",
-                                    ww_path=f"{sim_directories[0]}/weight_windows.h5",
+                                    ww_path=args.ww_path,
                                     batches=args.batches,
                                     particles=args.particles)
 
-        if args.ww and args.ww_method.lower() == "pre-generated":
-            print("Using user-provided pre-generated weight windows...")
-            model = build_model(args.dagmc_file, 
-                                source_position=(x_pos, 120, 95), 
-                                source_strength=2e9, 
-                                simulate_photons=args.photons, 
-                                ww=args.ww, 
-                                ww_method="pre-generated",
-                                ww_path=args.ww_path,
-                                batches=args.batches,
-                                particles=args.particles)
-
-        model.run(cwd=sim_directories[i])
+            model.run(cwd=sim_directories[i])
 
 
 # Setup figures for plotting results
@@ -125,7 +127,7 @@ ax.errorbar(source_x_positions, direct_flux, yerr=direct_flux_std_dev, marker='o
 ax.vlines(0.919, ymin=0, ymax=max(direct_flux)*1.1, colors='red', linestyles='dashed', label='FOV Edge (x=0.919 cm)')
 ax.set_xlabel('Source X Position (cm)', fontsize=14)
 ax.set_ylabel('Direct Neutron Flux at Detector (n/cm²-s)', fontsize=14)
-ax.set_yscale('log')
+#ax.set_yscale('log')
 #ax.set_title('Direct Neutron Flux at Detector vs Source X Position')
 ax.set_ybound(lower=0)
 fig.savefig(f"{args.directory}/direct_neutron_flux_vs_source_position.png", dpi=300)
