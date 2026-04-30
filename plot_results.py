@@ -8,6 +8,8 @@ parser = argparse.ArgumentParser(description='Plot OpenMC simulation results.')
 parser.add_argument("directory", help="Directory containing OpenMC statepoint file")
 args = parser.parse_args()
 
+source_rate = 2e9  # n/s
+
 def analyse_statepoint(directory, sp_name = "statepoint.100.h5", plot=True):
     sp = openmc.StatePoint(f"{directory}/{sp_name}")
 
@@ -21,7 +23,7 @@ def analyse_statepoint(directory, sp_name = "statepoint.100.h5", plot=True):
     flux_reshaped = flux.reshape(mesh.dimension[1], mesh.dimension[0])  # Note the order for plotting
 
     # Divide by volume to convert to flux
-    flux_reshaped = flux_reshaped/mesh.volumes.reshape(mesh.dimension[1], mesh.dimension[0])
+    flux_reshaped = flux_reshaped/mesh.volumes.reshape(mesh.dimension[1], mesh.dimension[0]) * source_rate
     flux_log_norm = colors.LogNorm(vmin=1, vmax=1e6)
 
     x = np.linspace(mesh.lower_left[0], mesh.upper_right[0], mesh.dimension[0] + 1)
@@ -46,7 +48,7 @@ def analyse_statepoint(directory, sp_name = "statepoint.100.h5", plot=True):
     dose_reshaped = dose.reshape(mesh.dimension[1], mesh.dimension[0])  # Note the order for plotting
 
     # Convert to mrem/hr
-    dose_reshaped = dose_reshaped/mesh.volumes.reshape(mesh.dimension[1], mesh.dimension[0]) * 3600 / 10000000 # from pSv/s to mrem/hr
+    dose_reshaped = dose_reshaped/mesh.volumes.reshape(mesh.dimension[1], mesh.dimension[0]) * 3600 / 10000000 * source_rate # from pSv/s to mrem/hr
     #log_dose = np.log10(dose_reshaped + 1e-20)  # Avoid log(0) issues
 
     dose_log_norm = colors.LogNorm(vmin=0.1, vmax=10000)
@@ -70,7 +72,7 @@ def analyse_statepoint(directory, sp_name = "statepoint.100.h5", plot=True):
 
     photon_dose_reshaped = photon_dose.reshape(mesh.dimension[1], mesh.dimension[0])  # Note the order for plotting
 
-    photon_dose_reshaped = photon_dose_reshaped/mesh.volumes.reshape(mesh.dimension[1], mesh.dimension[0]) * 3600 / 10000000 # from pSv/s to mrem/hr
+    photon_dose_reshaped = photon_dose_reshaped/mesh.volumes.reshape(mesh.dimension[1], mesh.dimension[0]) * 3600 / 10000000 * source_rate # from pSv/s to mrem/hr
 
     photon_dose_log_norm = colors.LogNorm(vmin=0.01, vmax=1000)
 
@@ -93,8 +95,8 @@ def analyse_statepoint(directory, sp_name = "statepoint.100.h5", plot=True):
     detector_flux_n = detector_tally.get_reshaped_data()[0, :, 0, 0, 0] 
     detector_flux_p = detector_tally.get_reshaped_data()[0, :, 1, 0, 0]
 
-    detector_flux_n = detector_flux_n / det_volume 
-    detector_flux_p = detector_flux_p / det_volume  
+    detector_flux_n = detector_flux_n / det_volume * source_rate
+    detector_flux_p = detector_flux_p / det_volume * source_rate
 
     det_spec_fig, det_spec_ax = plt.subplots(1, 2, figsize=(16,6))
     det_spec_ax[0].spines['top'].set_visible(False)

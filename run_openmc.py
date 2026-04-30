@@ -15,6 +15,7 @@ parser.add_argument("directory", help="Output file directory for OpenMC results"
 parser.add_argument("--photons", action="store_true", help="Include photons in the simulation")
 parser.add_argument("--batches", type=int, default=100, help="Number of batches for the OpenMC simulation (default: 100)")
 parser.add_argument("--particles", type=int, default=100000, help="Number of particles per batch for the OpenMC simulation (default: 100000)")
+parser.add_argument("--low_energy", type=float, default=None, help="Lower energy bound for neutron transport")
 
 args = parser.parse_args()
 
@@ -96,15 +97,17 @@ def build_model(dagmc_file, source_position=(0, 120, 95),
                 ww_method="magic",
                 ww_path=None,
                 batches=100,
-                particles=100000):
+                particles=100000,
+                low_energy=None):
 
     model = openmc.model.Model()
 
     # Detector region
     det_thickness = 1 # cm
     det_diameter = 3 #cm
-    detector_front = openmc.YPlane(-290)
-    detector_back = openmc.YPlane(-290 - det_thickness)
+    det_distance = 10 + 286 + 4.5 # cm from source to front of detector (10 cm from source to collimator, 286 cm from collimator to detector, 4.5 cm from front of detector to center of detector)
+    detector_front = openmc.YPlane(-det_distance)
+    detector_back = openmc.YPlane(-det_distance - det_thickness)
     detector_cyl = openmc.YCylinder(r=det_diameter/2, z0=95)
 
     detector_region = -detector_front & +detector_back & -detector_cyl
@@ -166,6 +169,9 @@ def build_model(dagmc_file, source_position=(0, 120, 95),
     settings.run_mode = 'fixed source'
     settings.source = source
     settings.photon_transport = simulate_photons
+    if low_energy is not None:
+        print(f"Setting low energy cutoff for neutrons to {low_energy} eV")
+        settings.cutoff = {'energy_neutron': low_energy}
 
     model.settings = settings
 
@@ -325,7 +331,13 @@ def build_model(dagmc_file, source_position=(0, 120, 95),
 
 if __name__ == "__main__":
     # Build OpenMC model object from DAGMC file and other settings
-    model = build_model(args.dagmc_file, source_position=(0, 120, 95), source_strength=2e9, simulate_photons=args.photons, ww=args.ww, ww_method=args.ww_method)
+    model = build_model(args.dagmc_file, 
+                        source_position=(0, 120, 95), 
+                        source_strength=None, 
+                        simulate_photons=args.photons, 
+                        ww=args.ww, 
+                        ww_method=args.ww_method,
+                        low_energy=args.low_energy)
 
     # Run OpenMC simulation
     model.run(cwd=args.directory)

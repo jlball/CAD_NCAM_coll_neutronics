@@ -14,7 +14,7 @@ args = parser.parse_args()
 model = CadToDagmc()
 model.add_stp_file(
     filename=args.step_file,
-    material_tags=["concrete", "aluminum", "aluminum", "carbon_fiber", "aluminum", "kretekast", "B_HDPE"]
+    material_tags=["concrete", "aluminum", "aluminum", "carbon_fiber", "aluminum", "kretekast"]
 )
 
 # material_tags=["concrete", "aluminum", "aluminum", "carbon_fiber", "aluminum", "kretekast"]

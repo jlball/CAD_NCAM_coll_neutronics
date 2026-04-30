@@ -18,7 +18,7 @@ args = parser.parse_args()
 
 #source_x_positions = [0.00, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]  # cm
 
-source_x_positions = [0.00, 0.2, 0.4, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0]  # 11 positions from 0 to 1 cm
+source_x_positions = [0.00, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2]  # 11 positions from 0 to 1 cm
 
 sim_directories = [f"{args.directory}/{x_pos}_cm_source_x" for x_pos in source_x_positions]
 
