@@ -15,6 +15,7 @@ parser.add_argument("--ww_path", type=str, help="Path to pre-generated weight wi
 parser.add_argument("--batches", type=int, default=100, help="Number of batches for the OpenMC simulation (default: 100).")
 parser.add_argument("--particles", type=int, default=100000 , help="Number of particles per batch for the OpenMC simulation (default: 100000).")
 parser.add_argument("--postprocess", action="store_true", help="Run post-processing and plotting after simulations.")
+parser.add_argument("--low_energy", type=float, default=None, help="Lower energy bound for neutron transport")
 args = parser.parse_args()
 
 #source_x_positions = [0.00, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]  # cm
@@ -47,7 +48,8 @@ if not args.postprocess:
                                         ww=args.ww, 
                                         ww_method=args.ww_method,
                                         batches=args.batches,
-                                        particles=args.particles)
+                                        particles=args.particles,
+                                        low_energy=args.low_energy)
 
                 else:
                     print("Reusing weight windows from previous simulation...")
@@ -59,7 +61,8 @@ if not args.postprocess:
                                         ww_method="pre-generated",
                                         ww_path=f"{sim_directories[0]}/weight_windows.h5",
                                         batches=args.batches,
-                                        particles=args.particles)
+                                        particles=args.particles,
+                                        low_energy=args.low_energy)
 
             if args.ww and args.ww_method.lower() == "pre-generated":
                 print("Using user-provided pre-generated weight windows...")
@@ -71,7 +74,8 @@ if not args.postprocess:
                                     ww_method="pre-generated",
                                     ww_path=args.ww_path,
                                     batches=args.batches,
-                                    particles=args.particles)
+                                    particles=args.particles,
+                                    low_energy=args.low_energy)
 
             model.run(cwd=sim_directories[i])
 
