@@ -22,3 +22,10 @@ model.add_stp_file(
 
 model.export_dagmc_h5m_file(filename=args.output_file, scale_factor=0.1) # Convert from mm to cm
 
+model.export_dagmc_h5m_file(
+    filename=args.output_file,
+    meshing_backend="gmsh",  # Default
+    min_mesh_size=0.1,
+    max_mesh_size=1.0e6,
+    scale_factor=0.1
+)
