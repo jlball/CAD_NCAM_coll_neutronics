@@ -26,6 +26,14 @@ model.export_dagmc_h5m_file(
     filename=args.output_file,
     meshing_backend="gmsh",  # Default
     min_mesh_size=0.1,
-    max_mesh_size=1.0e6,
+    max_mesh_size=10.0,
     scale_factor=0.1
+)
+
+# Export 2D surface mesh
+model.export_gmsh_mesh_file(
+    filename=f"{args.output_file}.msh",
+    dimensions=2,
+    min_mesh_size=0.1,
+    max_mesh_size=10.0,
 )
