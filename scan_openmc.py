@@ -4,6 +4,7 @@ import argparse
 import os
 from run_openmc import build_model
 import matplotlib.pyplot as plt
+import pickle
 
 parser = argparse.ArgumentParser(description="Run OpenMC simulations with varying source positions.")
 parser.add_argument("directory", type=str, default="openmc_simulations", help="Directory to store OpenMC simulation results.")
@@ -42,7 +43,7 @@ if not args.postprocess:
                 if i == 0:
                     print("Generating weight windows for the first simulation...")
                     model = build_model(args.dagmc_file, 
-                                        source_position=(x_pos, 120, 95), 
+                                        source_position=(x_pos, 150, 95), 
                                         source_strength=2e9, 
                                         simulate_photons=args.photons, 
                                         ww=args.ww, 
@@ -54,7 +55,7 @@ if not args.postprocess:
                 else:
                     print("Reusing weight windows from previous simulation...")
                     model = build_model(args.dagmc_file, 
-                                        source_position=(x_pos, 120, 95), 
+                                        source_position=(x_pos, 150, 95), 
                                         source_strength=2e9, 
                                         simulate_photons=args.photons, 
                                         ww=args.ww, 
@@ -67,7 +68,7 @@ if not args.postprocess:
             if args.ww and args.ww_method.lower() == "pre-generated":
                 print("Using user-provided pre-generated weight windows...")
                 model = build_model(args.dagmc_file, 
-                                    source_position=(x_pos, 120, 95), 
+                                    source_position=(x_pos, 150, 95), 
                                     source_strength=2e9, 
                                     simulate_photons=args.photons, 
                                     ww=args.ww, 
@@ -87,12 +88,15 @@ det_spec_ax.spines['right'].set_visible(False)
 det_spec_ax.set_xlabel('Energy (MeV)')
 det_spec_ax.set_ylabel('Neutron Flux (n/cm²-s)')
 det_spec_ax.set_title('Neutron Energy Spectrum at Detector')
-det_spec_ax.set_xscale('log')
+#det_spec_ax.set_xscale('log')
+det_spec_ax.set_xlim(2, 18)
 det_spec_ax.set_yscale('log')
-det_spec_ax.legend()
+
 
 direct_flux = []
 direct_flux_std_dev = []
+
+E_threshold = 2.5  # MeV
 
 for i, sim_dir in enumerate(sim_directories):
     print(f"Analyzing results in {sim_dir}")
@@ -116,22 +120,32 @@ for i, sim_dir in enumerate(sim_directories):
 
     # Plot neutron and photon spectra
     det_spec_ax.step(bin_centers, detector_flux_n, label=f'Source at x={source_x_positions[i]:.2f} cm')
-    det_spec_ax.fill_between(bin_centers, detector_flux_n - detector_flux_n_std_dev, detector_flux_n + detector_flux_n_std_dev, alpha=0.3)
+    det_spec_ax.fill_between(bin_centers, detector_flux_n - detector_flux_n_std_dev, detector_flux_n + detector_flux_n_std_dev, alpha=0.3, step='pre')
 
-    direct_flux.append(np.sum(detector_flux_n[bin_centers > 14]))  
-    direct_flux_std_dev.append(np.sqrt(np.sum(detector_flux_n_std_dev[bin_centers > 14]**2)))
+    direct_flux.append(np.sum(detector_flux_n[bin_centers > E_threshold]))  
+    direct_flux_std_dev.append(np.sqrt(np.sum(np.power(detector_flux_n_std_dev[bin_centers > E_threshold], 2))))
 
 det_spec_ax.set_ybound(lower = 0.0001)
+det_spec_ax.legend()
 det_spec_fig.savefig(f"{args.directory}/detector_neutron_spectrum.png", dpi=300)
 
 fig, ax = plt.subplots(figsize=(8, 6))
 ax.spines['top'].set_visible(False), ax.spines['right'].set_visible(False)
 
-ax.errorbar(source_x_positions, direct_flux, yerr=direct_flux_std_dev, marker='o', linestyle='', capsize=5, color='blue')
-ax.vlines(0.919, ymin=0, ymax=max(direct_flux)*1.1, colors='red', linestyles='dashed', label='FOV Edge (x=0.919 cm)')
+ax.scatter(source_x_positions, direct_flux, marker='o', color='blue')
+ax.vlines(1.06, ymin=0, ymax=max(direct_flux)*1.1, colors='red', linestyles='dashed', label='FOV Edge (x=1.06 cm)')
 ax.set_xlabel('Source X Position (cm)', fontsize=14)
 ax.set_ylabel('Direct Neutron Flux at Detector (n/cm²-s)', fontsize=14)
 #ax.set_yscale('log')
 #ax.set_title('Direct Neutron Flux at Detector vs Source X Position')
 ax.set_ybound(lower=0)
 fig.savefig(f"{args.directory}/direct_neutron_flux_vs_source_position.png", dpi=300)
+
+data_dict = {
+    "source_x_positions": source_x_positions,
+    "direct_flux": direct_flux,
+    "direct_flux_std_dev": direct_flux_std_dev
+}
+
+with open(f"{args.directory}/direct_flux_data.pkl", "wb") as f:
+    pickle.dump(data_dict, f)
