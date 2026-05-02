@@ -10,7 +10,7 @@ parser = argparse.ArgumentParser(description="Run OpenMC simulations with varyin
 parser.add_argument("directory", type=str, default="openmc_simulations", help="Directory to store OpenMC simulation results.")
 parser.add_argument("--dagmc_file", "-f", type=str, help="Path to the DAGMC file.")
 parser.add_argument("--photons", action="store_true", help="Enable photon transport in the simulation.")
-parser.add_argument("--ww", action="store_true", help="Enable weight window generation.")
+parser.add_argument("--ww", action="store_true", default=False, help="Enable weight window generation.")
 parser.add_argument("--ww_method", type=str, default="magic", choices=["magic", "fw_cadis", "pre-generated"], help="Method for weight window generation (default: magic).")
 parser.add_argument("--ww_path", type=str, help="Path to pre-generated weight window file (required if ww_method is 'pre-generated').")
 parser.add_argument("--batches", type=int, default=100, help="Number of batches for the OpenMC simulation (default: 100).")
@@ -74,6 +74,17 @@ if not args.postprocess:
                                     ww=args.ww, 
                                     ww_method="pre-generated",
                                     ww_path=args.ww_path,
+                                    batches=args.batches,
+                                    particles=args.particles,
+                                    low_energy=args.low_energy)
+                
+            else:
+                model = build_model(args.dagmc_file, 
+                                    source_position=(x_pos, 150, 95), 
+                                    source_strength=2e9, 
+                                    simulate_photons=args.photons, 
+                                    ww=args.ww,
+                                    ww_method=args.ww_method,
                                     batches=args.batches,
                                     particles=args.particles,
                                     low_energy=args.low_energy)

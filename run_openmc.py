@@ -317,9 +317,12 @@ def build_model(dagmc_file, source_position=(0, 150, 95),
     mesh_photon_dose.filters = [mesh_filter, photon_dose_filter, photon_filter]
     mesh_photon_dose.scores = ['flux']  # Dose will be calculated via the dose coefficients
 
+    # Detector energy filter
+    det_energy_filter = openmc.EnergyFilter([2.5e6, 15e6]) # Energy bins for detector tally
+
     # Detector Tally
     detector_tally = openmc.Tally(name='detector tally')
-    detector_tally.filters = [openmc.CellFilter(detector_cell), energy_filter, dual_particle_filter]
+    detector_tally.filters = [openmc.CellFilter(detector_cell), det_energy_filter, dual_particle_filter]
     detector_tally.scores = ['flux']
 
     tallies.append(mesh_flux_tally)
