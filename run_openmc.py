@@ -99,7 +99,8 @@ def build_model(dagmc_file, source_position=(0, 150, 95),
                 ww_path=None,
                 batches=100,
                 particles=100000,
-                low_energy=None):
+                low_energy=None,
+                mesh_tallies=True):
 
     model = openmc.model.Model()
 
@@ -325,10 +326,17 @@ def build_model(dagmc_file, source_position=(0, 150, 95),
     detector_tally.filters = [openmc.CellFilter(detector_cell), det_energy_filter, dual_particle_filter]
     detector_tally.scores = ['flux']
 
-    tallies.append(mesh_flux_tally)
-    tallies.append(mesh_neutron_dose)
-    tallies.append(mesh_photon_dose)
+    direct_detector_tally = openmc.Tally(name='direct detector tally')
+    direct_detector_tally.filters = [openmc.CellFilter(detector_cell), neutron_filter, openmc.EnergyFilter([14e6, 15e6])]
+    direct_detector_tally.scores = ['flux']
+
+    if mesh_tallies:
+        tallies.append(mesh_flux_tally)
+        tallies.append(mesh_neutron_dose)
+        tallies.append(mesh_photon_dose)
+
     tallies.append(detector_tally)
+    tallies.append(direct_detector_tally)
     model.tallies = tallies
 
     return model

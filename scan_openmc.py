@@ -21,7 +21,8 @@ args = parser.parse_args()
 
 #source_x_positions = [0.00, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]  # cm
 
-source_x_positions = [0.00, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2]  # 11 positions from 0 to 1 cm
+source_x_positions = [0.00, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4]  # 11 positions from 0 to 1 cm
+source_to_collimator_dist = 194.5 #160 #cm See 260430 slide deck
 
 sim_directories = [f"{args.directory}/{x_pos}_cm_source_x" for x_pos in source_x_positions]
 
@@ -43,19 +44,20 @@ if not args.postprocess:
                 if i == 0:
                     print("Generating weight windows for the first simulation...")
                     model = build_model(args.dagmc_file, 
-                                        source_position=(x_pos, 150, 95), 
+                                        source_position=(x_pos, source_to_collimator_dist, 95), 
                                         source_strength=2e9, 
                                         simulate_photons=args.photons, 
                                         ww=args.ww, 
                                         ww_method=args.ww_method,
                                         batches=args.batches,
                                         particles=args.particles,
-                                        low_energy=args.low_energy)
+                                        low_energy=args.low_energy,
+                                        mesh_tallies=False)
 
                 else:
                     print("Reusing weight windows from previous simulation...")
                     model = build_model(args.dagmc_file, 
-                                        source_position=(x_pos, 150, 95), 
+                                        source_position=(x_pos, source_to_collimator_dist, 95), 
                                         source_strength=2e9, 
                                         simulate_photons=args.photons, 
                                         ww=args.ww, 
@@ -63,12 +65,13 @@ if not args.postprocess:
                                         ww_path=f"{sim_directories[0]}/weight_windows.h5",
                                         batches=args.batches,
                                         particles=args.particles,
-                                        low_energy=args.low_energy)
+                                        low_energy=args.low_energy,
+                                        mesh_tallies=False)
 
             if args.ww and args.ww_method.lower() == "pre-generated":
                 print("Using user-provided pre-generated weight windows...")
                 model = build_model(args.dagmc_file, 
-                                    source_position=(x_pos, 150, 95), 
+                                    source_position=(x_pos, source_to_collimator_dist, 95), 
                                     source_strength=2e9, 
                                     simulate_photons=args.photons, 
                                     ww=args.ww, 
@@ -76,32 +79,34 @@ if not args.postprocess:
                                     ww_path=args.ww_path,
                                     batches=args.batches,
                                     particles=args.particles,
-                                    low_energy=args.low_energy)
+                                    low_energy=args.low_energy,
+                                    mesh_tallies=False)
                 
             else:
                 model = build_model(args.dagmc_file, 
-                                    source_position=(x_pos, 150, 95), 
+                                    source_position=(x_pos, source_to_collimator_dist, 95), 
                                     source_strength=2e9, 
                                     simulate_photons=args.photons, 
                                     ww=args.ww,
                                     ww_method=args.ww_method,
                                     batches=args.batches,
                                     particles=args.particles,
-                                    low_energy=args.low_energy)
+                                    low_energy=args.low_energy,
+                                    mesh_tallies=False)
 
             model.run(cwd=sim_directories[i])
 
 
-# Setup figures for plotting results
-det_spec_fig, det_spec_ax = plt.subplots(figsize=(8, 6))
-det_spec_ax.spines['top'].set_visible(False)
-det_spec_ax.spines['right'].set_visible(False)
-det_spec_ax.set_xlabel('Energy (MeV)')
-det_spec_ax.set_ylabel('Neutron Flux (n/cm²-s)')
-det_spec_ax.set_title('Neutron Energy Spectrum at Detector')
-#det_spec_ax.set_xscale('log')
-det_spec_ax.set_xlim(2, 18)
-det_spec_ax.set_yscale('log')
+# # Setup figures for plotting results
+# det_spec_fig, det_spec_ax = plt.subplots(figsize=(8, 6))
+# det_spec_ax.spines['top'].set_visible(False)
+# det_spec_ax.spines['right'].set_visible(False)
+# det_spec_ax.set_xlabel('Energy (MeV)')
+# det_spec_ax.set_ylabel('Neutron Flux (n/cm²-s)')
+# det_spec_ax.set_title('Neutron Energy Spectrum at Detector')
+# #det_spec_ax.set_xscale('log')
+# det_spec_ax.set_xlim(2, 18)
+# det_spec_ax.set_yscale('log')
 
 
 direct_flux = []
@@ -117,8 +122,8 @@ for i, sim_dir in enumerate(sim_directories):
     # Analyze detector tally
     det_volume = (np.pi * (1.5)**2) * 1  # cm^3
     detector_tally = sp.get_tally(name='detector tally')
-    detector_flux_n = detector_tally.get_reshaped_data()[0, :, 0, 0, 0] 
-    detector_flux_n_std_dev = detector_tally.get_reshaped_data(value="std_dev")[0, :, 0, 0, 0]
+    detector_flux_n = detector_tally.get_reshaped_data()[0, 0, 0, 0, 0] 
+    detector_flux_n_std_dev = detector_tally.get_reshaped_data(value="std_dev")[0, 0, 0, 0, 0]
 
    # detector_flux_p = detector_tally.get_reshaped_data()[0, :, 1, 0, 0]
 
@@ -126,24 +131,21 @@ for i, sim_dir in enumerate(sim_directories):
     detector_flux_n_std_dev = detector_flux_n_std_dev / det_volume 
     # detector_flux_p = detector_flux_p / det_volume  
 
-    energy_bins = detector_tally.find_filter(openmc.EnergyFilter).values
-    bin_centers = 0.5 * (energy_bins[:-1] + energy_bins[1:]) / 1e6  # Convert from eV to MeV
+    # # Plot neutron and photon spectra
+    # det_spec_ax.step(bin_centers, detector_flux_n, label=f'Source at x={source_x_positions[i]:.2f} cm')
+    # det_spec_ax.fill_between(bin_centers, detector_flux_n - detector_flux_n_std_dev, detector_flux_n + detector_flux_n_std_dev, alpha=0.3, step='pre')
 
-    # Plot neutron and photon spectra
-    det_spec_ax.step(bin_centers, detector_flux_n, label=f'Source at x={source_x_positions[i]:.2f} cm')
-    det_spec_ax.fill_between(bin_centers, detector_flux_n - detector_flux_n_std_dev, detector_flux_n + detector_flux_n_std_dev, alpha=0.3, step='pre')
+    direct_flux.append(detector_flux_n)  
+    direct_flux_std_dev.append(detector_flux_n_std_dev)
 
-    direct_flux.append(np.sum(detector_flux_n[bin_centers > E_threshold]))  
-    direct_flux_std_dev.append(np.sqrt(np.sum(np.power(detector_flux_n_std_dev[bin_centers > E_threshold], 2))))
-
-det_spec_ax.set_ybound(lower = 0.0001)
-det_spec_ax.legend()
-det_spec_fig.savefig(f"{args.directory}/detector_neutron_spectrum.png", dpi=300)
+# det_spec_ax.set_ybound(lower = 0.0001)
+# det_spec_ax.legend()
+# det_spec_fig.savefig(f"{args.directory}/detector_neutron_spectrum.png", dpi=300)
 
 fig, ax = plt.subplots(figsize=(8, 6))
 ax.spines['top'].set_visible(False), ax.spines['right'].set_visible(False)
 
-ax.scatter(source_x_positions, direct_flux, marker='o', color='blue')
+ax.errorbar(source_x_positions, direct_flux, yerr=direct_flux_std_dev, marker='o', color='blue', linestyle='None')
 ax.vlines(1.06, ymin=0, ymax=max(direct_flux)*1.1, colors='red', linestyles='dashed', label='FOV Edge (x=1.06 cm)')
 ax.set_xlabel('Source X Position (cm)', fontsize=14)
 ax.set_ylabel('Direct Neutron Flux at Detector (n/cm²-s)', fontsize=14)
