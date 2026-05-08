@@ -20,20 +20,17 @@ model.add_stp_file(
 # material_tags=["concrete", "aluminum", "aluminum", "carbon_fiber", "aluminum", "kretekast"]
 # material_tags=["concrete", "air", "aluminum", "carbon_fiber", "air", "kretekast"]
 
-model.export_dagmc_h5m_file(filename=args.output_file, scale_factor=0.1) # Convert from mm to cm
-
 model.export_dagmc_h5m_file(
     filename=args.output_file,
     meshing_backend="gmsh",  # Default
     min_mesh_size=0.1,
-    max_mesh_size=10.0,
-    scale_factor=0.1
-)
-
-# Export 2D surface mesh
-model.export_gmsh_mesh_file(
-    filename=f"{args.output_file}.msh",
-    dimensions=2,
-    min_mesh_size=0.1,
-    max_mesh_size=10.0,
+    max_mesh_size=5.0,
+    scale_factor=0.1,
+    set_size={
+        2 : 0.2,
+        3 : 2.0,
+        4 : 0.5,
+        5 : 0.5,
+        6 : 0.2,
+    }
 )
