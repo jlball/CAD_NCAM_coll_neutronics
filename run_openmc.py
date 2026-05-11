@@ -81,6 +81,12 @@ B_HDPE.add_nuclide('B10', 0.009253958)
 B_HDPE.add_nuclide('B11', 0.037436042)
 B_HDPE.set_density('g/cm3', 1)
 
+stainless_steel = openmc.Material(name='stainless_steel')
+stainless_steel.add_element('Fe', 0.70)
+stainless_steel.add_element('Cr', 0.18)
+stainless_steel.add_element('Ni', 0.08)
+stainless_steel.set_density('g/cm3', 8.0)
+
 materials_dict = {
     'aluminum': aluminum,
     'concrete': concrete,
@@ -88,7 +94,8 @@ materials_dict = {
     'kretekast': kretekast,
     'deuterated_xylene': deuterated_xylene,
     "air": air,
-    'B_HDPE': B_HDPE
+    'B_HDPE': B_HDPE,
+    'stainless_steel': stainless_steel
 }
 
 def build_model(dagmc_file, source_position=(0, 150, 95), 
